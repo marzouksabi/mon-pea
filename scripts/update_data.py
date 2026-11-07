@@ -6,6 +6,7 @@ Exécuté chaque soir de semaine par GitHub Actions. En cas d'échec d'une sourc
 import datetime as dt
 import json
 import pathlib
+import subprocess
 import time
 import urllib.request
 
@@ -14,11 +15,11 @@ OUT = ROOT / 'data' / 'market.json'
 UA = {'User-Agent': 'Mozilla/5.0 (pea-app data update)'}
 
 
-def get(url, tries=5):
+def get(url, tries=3):
     last = None
     for k in range(tries):
         try:
-            return urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=90).read().decode()
+            return urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=45).read().decode()
         except Exception as e:  # noqa: BLE001 - on retente puis on garde l'ancienne donnée
             last = e
             time.sleep(5 * (k + 1))
@@ -46,8 +47,13 @@ def msci():
     return {'start': str(lv[0]['calc_date'])[:6], 'v': [round(x['level_eod'], 4) for x in lv]}
 
 
+def curl(url):
+    # FRED coupe souvent les requetes faites en Python ; curl passe
+    return subprocess.run(['curl', '-s', '-f', '--max-time', '60', '--retry', '3', url], check=True, capture_output=True, text=True).stdout
+
+
 def hicp():
-    rows = [r.split(',') for r in get('https://fred.stlouisfed.org/graph/fredgraph.csv?id=CP0000FRM086NEST').strip().splitlines()[1:]]
+    rows = [r.split(',') for r in curl('https://fred.stlouisfed.org/graph/fredgraph.csv?id=CP0000FRM086NEST').strip().splitlines()[1:]]
     rows = [(d[:7].replace('-', ''), float(v)) for d, v in rows if v not in ('.', '')]
     return {'start': rows[0][0], 'v': [v for _, v in rows]}
 
