@@ -324,7 +324,7 @@
         cls += ' hold';
         sub = 'Acheté le ' + shortDay(days[e]) + ' à ' + px(c[e]) + ' · ' + sgn(P / c[e] - 1) + ' à la dernière clôture.';
         if (held >= 10) act = 'Vendre à la clôture ce soir';
-        else { act = 'En position : vendre si la clôture dépasse ' + px(Y); sub = (Y > P ? 'Soit ' + sgn(Y / P - 1) + ' par rapport à la dernière clôture. ' : 'Déjà au-dessus : vente quasi certaine. ') + sub + ' Sinon on garde (séance ' + held + ' sur 10).'; }
+        else { act = 'En position : vendre si la clôture dépasse ' + px(Y); sub = (Y > P ? 'Soit ' + sgn(Y / P - 1) + ' par rapport à la dernière clôture. ' : 'Déjà au-dessus : vente quasi certaine. ') + sub + ' Sinon on garde, au plus tard environ ' + Math.round((10 - held) * 7 / 5) + ' jours de plus.'; }
         lastSignal = Math.max(lastSignal, days[e]);
       } else {
         var X = st.ad > 9 * st.au ? P + (st.ad - 9 * st.au) / 9 : P - (9 * st.au - st.ad), F = 0;

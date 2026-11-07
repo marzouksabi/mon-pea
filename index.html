@@ -61,7 +61,7 @@
       <summary>Réglages de la règle</summary>
       <label class="field"><span>Volatilité acceptée</span><select id="s-tgt"><option value="0.15">15 % / an</option><option value="0.2">20 % / an</option><option value="0.3">30 % / an</option></select></label>
       <label class="field"><span>Réajuster si l'écart dépasse</span><select id="s-band"><option value="0.1">10 points</option><option value="0.2">20 points</option></select></label>
-      <label class="field"><span>Mesure de la volatilité</span><select id="s-win"><option value="60">60 séances</option><option value="90">90 séances</option></select></label>
+      <label class="field"><span>Mesure de la volatilité</span><select id="s-win"><option value="60">3 derniers mois</option><option value="90">4 derniers mois et demi</option></select></label>
       <p class="muted">Réglage retenu : 20 % et 20 points. La règle protège dans les longues crises, réagit avec retard aux krachs rapides et coûte un peu de rendement en temps normal.</p>
     </details>
   </section>
@@ -180,7 +180,7 @@
       <h2>La règle</h2>
       <ul class="list">
         <li><b>Acheter à la clôture</b> si l'indice est au-dessus de sa moyenne des 200 dernières clôtures et que son RSI à 2 jours passe sous 10.</li>
-        <li><b>Revendre à la clôture</b> dès que l'indice clôture au-dessus de sa moyenne des 5 dernières clôtures, au plus tard après 10 séances.</li>
+        <li><b>Revendre à la clôture</b> dès que l'indice clôture au-dessus de sa moyenne des 5 dernières clôtures, au plus tard après environ 2 semaines.</li>
         <li>S&amp;P 500 et Nasdaq-100, un trade à la fois par indice, sans stop.</li>
       </ul>
     </div>

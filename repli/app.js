@@ -16,6 +16,7 @@
   var dn = function (s) { return Math.floor(Date.parse(s + 'T00:00:00Z') / DAY); };
   var shortDay = function (d) { var x = new Date(d * DAY); return x.getUTCDate() + ' ' + MOIS[x.getUTCMonth()]; };
   var longDay = function (d) { var x = new Date(d * DAY); return JOURS[x.getUTCDay()] + ' ' + x.getUTCDate() + ' ' + MOIS[x.getUTCMonth()]; };
+  var jours = function (n) { return n + ' jour' + (n > 1 ? 's' : ''); };
   var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var store = {
     get: function (k, d) { try { var v = localStorage.getItem('repli:' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
@@ -105,7 +106,7 @@
       if (p < a.X && p > a.F) return { cls: 'buy', txt: 'Achat à la clôture', sub: 'Le prix (' + px(p) + ') est sous le seuil ' + px(a.X) + '. Si ça tient jusqu\'à la clôture, on achète.' };
       return { cls: 'none', txt: 'Pas d\'achat pour l\'instant', sub: 'Le prix (' + px(p) + ') est ' + pct(p / a.X - 1) + ' au-dessus du seuil ' + px(a.X) + '.' };
     }
-    if (a.forced) return { cls: 'sell', txt: 'Vendre à la clôture', sub: '10e séance : on sort quoi qu\'il arrive.' };
+    if (a.forced) return { cls: 'sell', txt: 'Vendre à la clôture', sub: 'Durée maximale atteinte (environ 2 semaines) : on sort quoi qu\'il arrive.' };
     if (p == null) return null;
     if (p > a.Y) return { cls: 'sell', txt: 'Vendre à la clôture', sub: 'Le prix (' + px(p) + ') dépasse ' + px(a.Y) + ' : le rebond est là.' };
     return { cls: 'ok', txt: 'On garde la position', sub: 'Le prix (' + px(p) + ') est sous ' + px(a.Y) + ' (' + pct(a.Y / p - 1) + ' à faire).' };
@@ -117,6 +118,8 @@
     return { lots: +lots.toFixed(6), notional: lots * ct * price };
   }
   var stopPct = function () { return 0.015 / cfg.lev; };
+  /* date de vente obligatoire : 10e jour de Bourse apres l'achat */
+  function deadline(a) { var d = session; for (var q = a.held; q < 10; q++) d = nextTrading(d); return d; }
 
   /* ---------- compte ---------- */
   function pnlOf(t) {
@@ -219,7 +222,7 @@
     var clockTxt = left > 0 ? (left > 36 * 3600000 ? longDay(session) : 'dans ' + Math.floor(left / 3600000) + ' h ' + String(Math.floor(left % 3600000 / 60000)).padStart(2, '0')) : 'clôture passée';
     $('clock').className = 'card s4 clock';
     $('clock').innerHTML = '<h3>Clôture de New York</h3><div class="when">' + hm(cl) + '</div><div class="muted" style="margin:0">' + esc(clockTxt) +
-      (early ? ' · séance courte (fermeture à 13 h à New York)' : '') + '</div><div class="bar"><i style="width:' + (left > 0 && left < total ? done * 100 : 0) + '%"></i></div>' +
+      (early ? ' · la Bourse ferme plus tôt ce jour-là' : '') + '</div><div class="bar"><i style="width:' + (left > 0 && left < total ? done * 100 : 0) + '%"></i></div>' +
       '<div class="muted" style="margin:0">Fenêtre d\'action : <b>' + hm(cl - 600000) + ' – ' + hm(cl) + '</b> (heure de Paris).' +
       (left <= 0 && session === today ? ' Les nouveaux seuils arrivent vers ' + hm(cl + 45 * 60000) + '.' : '') + '</div>';
 
@@ -231,8 +234,8 @@
     var a = A[k], I = IDX[k], c = I.c, n = c.length, np = nowPrice(k, session), v = verdict(a, np ? np.p : null), pill, sig, small;
     if (a.mode === 'pos') {
       pill = a.forced ? '<span class="pill sell"><i></i>Vente ce soir</span>' : '<span class="pill hold"><i></i>En position</span>';
-      sig = a.forced ? 'Vendre à la clôture (10e séance)' : 'Vendre si la clôture dépasse ' + px(a.Y);
-      small = 'Acheté le ' + shortDay(a.entryDay) + ' à ' + px(a.entry) + ' · ' + pct(a.pnl) + ' à la dernière clôture · séance ' + a.held + ' sur 10.';
+      sig = a.forced ? 'Vendre à la clôture (durée maximale atteinte)' : 'Vendre si la clôture dépasse ' + px(a.Y);
+      small = 'Acheté le ' + shortDay(a.entryDay) + ' à ' + px(a.entry) + ' · ' + pct(a.pnl) + ' à la dernière clôture · ouvert depuis ' + jours(a.last - a.entryDay) + ' · vente au plus tard le ' + longDay(deadline(a));
     } else if (a.possible) {
       pill = '<span class="pill buy"><i></i>Achat possible</span>';
       sig = 'Acheter si la clôture est sous ' + px(a.X);
@@ -277,7 +280,7 @@
     var ns = nextTrading(today - 1);
     for (var d = today; d <= today + 10; d++) {
       if (HOLIDAYS.indexOf(ds(d)) >= 0 && new Date(d * DAY).getUTCDay() % 6) { out.push(['', 'i', '<b>Bourse de New York fermée le ' + longDay(d) + '.</b> Pas de clôture ce jour-là.']); break; }
-      if (EARLY.indexOf(ds(d)) >= 0) { out.push(['warn', '!', '<b>Séance courte le ' + longDay(d) + '</b> : clôture à ' + hm(closeUTC(d)) + ' (heure de Paris).']); break; }
+      if (EARLY.indexOf(ds(d)) >= 0) { out.push(['warn', '!', '<b>La Bourse ferme plus tôt le ' + longDay(d) + '</b> : clôture à ' + hm(closeUTC(d)) + ' (heure de Paris).']); break; }
     }
     if (s.target && s.bal >= s.target) out.push(['ok', '✓', '<b>Objectif de la phase atteint.</b> Vérifie les 5 jours de trading, puis passe à l\'étape suivante dans Compte.']);
     if (!out.length) out.push(['ok', '✓', '<b>Rien à signaler.</b> Compte actif, cours à jour.']);
@@ -322,8 +325,8 @@
       } else {
         var mine = trades.filter(function (t) { return t.idx === k && !t.d2; });
         var lotsOpen = mine.reduce(function (s, t) { return s + t.lots; }, 0);
-        body = (a.forced ? '<div class="big-act sell">Fermer la position à la clôture</div><p class="muted" style="margin:0">10e séance : sortie obligatoire.</p>' :
-          '<div class="big-act sell">Fermer si le prix dépasse ' + px(a.Y) + '</div><p class="muted" style="margin:0">' + pct(a.Y / a.P - 1) + ' par rapport à la dernière clôture. Sinon, on garde.</p>') +
+        body = (a.forced ? '<div class="big-act sell">Fermer la position à la clôture</div><p class="muted" style="margin:0">Durée maximale atteinte (environ 2 semaines) : sortie obligatoire.</p>' :
+          '<div class="big-act sell">Fermer si le prix dépasse ' + px(a.Y) + '</div><p class="muted" style="margin:0">' + pct(a.Y / a.P - 1) + ' par rapport à la dernière clôture. Sinon, on garde (au plus tard jusqu\'au ' + longDay(deadline(a)) + ').</p>') +
           '<div class="order"><div><span>Ordre</span><b>Fermer (Sell)</b></div><div><span>Volume</span><b>' + (lotsOpen ? nf(lotsOpen, 2) + ' lots' : 'toute la position') + '</b></div><div><span>Achat</span><b>' + px(a.entry) + ' · ' + shortDay(a.entryDay) + '</b></div></div>';
       }
       var vb = v && (a.mode === 'pos' || a.possible) ? '<div class="verdict ' + v.cls + '">' + esc(v.txt) + '<small>' + esc(v.sub) + (np ? ' Prix : ' + esc(np.src) + '.' : '') + '</small></div>' : '';
@@ -478,7 +481,7 @@
     /* trades de l'annee (sans stop : performance brute de la regle) */
     var T = legs(null).filter(function (t) { return t.e > s0 && t.e <= e0; }).sort(function (a, b) { return a.e - b.e; });
     var closed = T.filter(function (t) { return !t.open; }), win = 0, sumG = 0, sumN = 0, dur = 0, best = -1, worst = 1;
-    closed.forEach(function (t) { if (t.net > 0) win++; sumG += t.gross; sumN += t.net; dur += t.n; best = Math.max(best, t.net); worst = Math.min(worst, t.net); });
+    closed.forEach(function (t) { if (t.net > 0) win++; sumG += t.gross; sumN += t.net; dur += t.x - t.e; best = Math.max(best, t.net); worst = Math.min(worst, t.net); });
 
     /* courbe : performance cumulee en % du compte (jour par jour, frais compris) */
     var bd = byDay(T), days = IDX.spx.days.filter(function (d) { return d > s0 && d <= e0; }), cum = 0, peak = 0, mdd = 0, xs = [], ys = [];
@@ -489,7 +492,7 @@
       ['Trades', closed.length + (T.length > closed.length ? ' + 1 ouvert' : ''), ''],
       ['Gagnants', closed.length ? Math.round(win / closed.length * 100) + ' %' : '—', ''],
       ['Gain moyen', closed.length ? pct(sumN / closed.length, 2) : '—', 'par trade, indice'],
-      ['Durée moyenne', closed.length ? nf(dur / closed.length, 1) + ' séances' : '—', ''],
+      ['Durée moyenne', closed.length ? nf(dur / closed.length, 1) + ' jours' : '—', ''],
       ['Performance', pct(cum, 1), 'du compte à ' + nf(lev, 1) + ' ×'],
       ['Pire recul', pct(mdd, 1), 'du compte'],
       ['Comptes cramés', String(sim.blown), sim.blown ? 'remplacés aussitôt' : ''],
@@ -498,7 +501,7 @@
 
     $('b-perf-sub').textContent = 'Gain cumulé en % du compte, frais de nuit et spread estimés compris, sans stop.';
     if (xs.length >= 2) lineChart($('b-perf'), { x: xs, series: [{ name: 'Performance', v: ys, c: '--s1' }], height: 210, label: 'Performance cumulée de la règle en ' + Y0, fmt: function (v) { return nf(v, 1) + ' %'; } });
-    else $('b-perf').innerHTML = '<p class="empty">Pas encore assez de séances.</p>';
+    else $('b-perf').innerHTML = '<p class="empty">Pas encore assez de données.</p>';
 
     var st = sim.a, now = st.ph < 3 ? 'Compte ' + st.n + ' en phase ' + st.ph + ', ' + pct((st.bal - size) / size) + ' sur l\'étape' : 'Compte ' + st.n + ' financé, ' + usd(st.bal - size) + ' de gain en cours';
     $('b-acct').innerHTML = '<h2>Compte FundedNext simulé</h2><div class="signal" style="margin-top:0">' + sUsd(net) + '<small>' + usd(sim.paid) + ' de paiements, ' + usd(sim.fees, 0) + ' de frais. ' + esc(now) + '.</small></div>' +
@@ -509,7 +512,7 @@
     barChart($('b-bars'), {
       v: closed.map(money), label: 'Résultat de chaque trade en ' + Y0, height: 200, fmtAxis: function (v) { return nf(v, 0); },
       xl: closed.length ? [[0, shortDay(closed[0].e)], [closed.length - 1, shortDay(closed[closed.length - 1].e)]] : null,
-      tip: function (i) { var t = closed[i]; return '<div>' + IDX[t.k].name + ' · ' + shortDay(t.e) + ' → ' + shortDay(t.x) + '</div><div><b>' + sUsd(money(t)) + '</b> · indice ' + pct(t.gross) + ' · ' + t.n + ' séance' + (t.n > 1 ? 's' : '') + '</div>'; }
+      tip: function (i) { var t = closed[i]; return '<div>' + IDX[t.k].name + ' · ' + shortDay(t.e) + ' → ' + shortDay(t.x) + '</div><div><b>' + sUsd(money(t)) + '</b> · indice ' + pct(t.gross) + ' · ' + jours(t.x - t.e) + '</div>'; }
     });
     var months = [], mv = [];
     for (var m = 0; m < 12; m++) { var md = dn(Y0 + '-' + String(m + 1).padStart(2, '0') + '-01'); if (md > e0) break; months.push(m); mv.push(0); }
@@ -522,7 +525,7 @@
 
     $('b-list').innerHTML = T.length ? T.slice().reverse().map(function (t) {
       return '<tr><td>' + IDX[t.k].name + '</td><td>' + shortDay(t.e) + '</td><td>' + px(t.pe) + '</td><td>' + (t.open ? '<b>en cours</b>' : shortDay(t.x)) + '</td><td>' + (t.open ? px(IDX[t.k].c[IDX[t.k].c.length - 1]) : px(t.px)) +
-        '</td><td>' + t.n + ' séance' + (t.n > 1 ? 's' : '') + '</td><td class="' + (t.gross >= 0 ? 'pos' : 'neg') + '">' + pct(t.gross) + '</td><td class="' + (t.net >= 0 ? 'pos' : 'neg') + '">' + sUsd(money(t)) + (t.open ? ' *' : '') + '</td></tr>';
+        '</td><td>' + jours((t.open ? IDX[t.k].days[IDX[t.k].days.length - 1] : t.x) - t.e) + '</td><td class="' + (t.gross >= 0 ? 'pos' : 'neg') + '">' + pct(t.gross) + '</td><td class="' + (t.net >= 0 ? 'pos' : 'neg') + '">' + sUsd(money(t)) + (t.open ? ' *' : '') + '</td></tr>';
     }).join('') : '<tr><td colspan="8" class="empty">Aucun signal sur la période.</td></tr>';
   }
 
