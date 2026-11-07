@@ -1,0 +1,99 @@
+/* Mon PEA — interface pensee pour iPhone : police systeme, cartes groupees, barre d'onglets en bas. */
+:root{
+  --bg:#f2f4f7; --card:#ffffff; --ink:#0e1218; --ink-2:#4f5a66; --muted:#8a94a0;
+  --line:rgba(14,18,24,.08); --field:#f2f4f7; --accent:#2a78d6; --accent-soft:rgba(42,120,214,.12);
+  --good:#0f9d58; --good-soft:rgba(15,157,88,.12); --warn:#d97706; --crit:#d03b3b;
+  --tab:rgba(250,251,252,.86);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0b0d10; --card:#16191e; --ink:#f2f5f8; --ink-2:#aab4bf; --muted:#7d8894;
+  --line:rgba(255,255,255,.08); --field:#0f1215; --accent:#4b93ea; --accent-soft:rgba(75,147,234,.24);
+  --good:#2bb673; --good-soft:rgba(43,182,115,.16); --warn:#f59e0b; --crit:#ef5a5a;
+  --tab:rgba(18,21,25,.86);
+  color-scheme:dark;
+}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:16px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;
+  padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+.top{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(env(safe-area-inset-top,0px) + 14px) 18px 8px}
+.top-in{max-width:560px;margin:0 auto}
+h1{font-size:32px;line-height:1.1;font-weight:700;letter-spacing:-.02em;margin:0}
+.stamp{margin:4px 0 0;font-size:13px;color:var(--muted)}
+main{max-width:560px;margin:0 auto;padding:6px 16px 20px}
+.view{display:flex;flex-direction:column;gap:14px}
+.card{background:var(--card);border-radius:18px;padding:18px;border:1px solid var(--line)}
+h2{font-size:19px;font-weight:650;margin:0 0 8px;letter-spacing:-.01em}
+.muted{color:var(--ink-2);font-size:14px;margin:0 0 12px}
+
+.hero{text-align:left}
+.hero-k{font-size:14px;color:var(--ink-2);font-weight:500}
+.hero-v{font-size:54px;font-weight:700;letter-spacing:-.03em;line-height:1.05;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.hero-s{font-size:14px;color:var(--ink-2)}
+.bar{height:10px;border-radius:6px;background:var(--field);overflow:hidden;margin:12px 0 8px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);border-radius:6px;transition:width .4s ease}
+
+.field{display:flex;align-items:center;gap:10px;background:var(--field);border-radius:12px;padding:4px 12px;margin:0 0 8px;min-height:48px}
+.field span{flex:1;font-size:15px;color:var(--ink-2)}
+.field input,.field select,.field textarea{font:inherit;font-size:17px;color:var(--ink);background:transparent;border:0;outline:0;text-align:right;width:46%;min-width:0;padding:10px 0}
+.field select{text-align-last:right;-webkit-appearance:none;appearance:none;color:var(--accent);width:auto}
+.field em{font-style:normal;color:var(--muted);font-size:15px}
+.field.col{flex-direction:column;align-items:stretch;padding:10px 12px}
+.field.col textarea{text-align:left;width:100%;font-size:14px}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none}
+.field:focus-within{box-shadow:0 0 0 2px var(--accent)}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pair .field input{width:52%}
+
+.verdict{margin:12px 0 10px;padding:14px;border-radius:14px;background:var(--field);font-size:18px;font-weight:650;line-height:1.3}
+.verdict small{display:block;font-size:14px;font-weight:400;color:var(--ink-2);margin-top:4px}
+.verdict.ok{background:var(--good-soft)}
+.verdict.act{background:var(--accent-soft)}
+
+.rows{margin:0}
+.rows div{display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-top:1px solid var(--line)}
+.rows div:first-child{border-top:0}
+.rows dt{color:var(--ink-2);font-size:15px}
+.rows dd{margin:0;font-weight:650;font-variant-numeric:tabular-nums}
+
+.tbl{width:100%;border-collapse:collapse;font-size:15px;font-variant-numeric:tabular-nums}
+.tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;text-align:right;padding:6px 0}
+.tbl td{text-align:right;padding:10px 0;border-top:1px solid var(--line)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl .del{border:0;background:none;color:var(--crit);font-size:14px;padding:4px 0 4px 10px}
+
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.duo div{background:var(--field);border-radius:14px;padding:12px}
+.duo b{display:block;font-size:13px;color:var(--ink-2);font-weight:500;margin-bottom:4px}
+.duo span{display:block;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.duo small{display:block;font-size:13px;color:var(--ink-2)}
+
+.chart{margin:12px 0 6px}
+.chart svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--ink-2);margin-bottom:6px}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{display:block;width:14px;height:3px;border-radius:2px}
+.legend i.band{height:10px;background:var(--accent-soft)}
+
+.btn{display:block;width:100%;border:0;border-radius:14px;background:var(--accent);color:#fff;font:inherit;font-size:17px;font-weight:650;padding:14px;margin-top:6px}
+.btn.ghost{background:var(--accent-soft);color:var(--accent);margin-bottom:10px}
+.btn:active{opacity:.8}
+
+.settings summary{font-size:17px;font-weight:650;list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.settings summary::-webkit-details-marker{display:none}
+.settings summary::after{content:"›";color:var(--muted);font-size:24px;transform:rotate(90deg);transition:transform .2s}
+.settings[open] summary::after{transform:rotate(-90deg)}
+.settings[open] summary{margin-bottom:12px}
+
+.list{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;color:var(--ink-2);font-size:15px}
+.list b{color:var(--ink)}
+
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;display:grid;grid-template-columns:repeat(4,1fr);
+  background:var(--tab);-webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px);
+  border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
+.tabs button{border:0;background:none;color:var(--muted);font:inherit;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0}
+.tabs svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs svg .fill{fill:currentColor}
+.tabs button[aria-current="page"]{color:var(--accent)}
+[hidden]{display:none!important}

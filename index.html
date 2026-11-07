@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mon PEA">
+<meta name="theme-color" content="#f2f4f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0d10" media="(prefers-color-scheme: dark)">
+<title>Mon PEA</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <h1 id="title">Cette semaine</h1>
+    <p class="stamp" id="stamp">Chargement des cours…</p>
+  </div>
+</header>
+
+<main>
+  <!-- SEMAINE -->
+  <section class="view" id="v-semaine" data-title="Cette semaine">
+    <div class="card hero">
+      <div class="hero-k">Part conseillée en actions</div>
+      <div class="hero-v" id="w-now">—</div>
+      <div class="bar"><i id="w-bar"></i></div>
+      <div class="hero-s" id="w-sub">—</div>
+    </div>
+
+    <div class="card">
+      <h2>Ma situation</h2>
+      <p class="muted">Mets à jour ces deux montants avant de lire le verdict : ils changent avec le marché.</p>
+      <label class="field"><span>Valeur de mes ETF</span><input id="held" type="number" inputmode="decimal" placeholder="ex. 1 050" min="0"><em>€</em></label>
+      <label class="field"><span>Liquidités dans le PEA</span><input id="cash" type="number" inputmode="decimal" placeholder="ex. 0" min="0"><em>€</em></label>
+      <div class="verdict" id="verdict">Entre tes deux montants pour savoir quoi faire cette semaine.</div>
+      <dl class="rows">
+        <div><dt>Ma part investie</dt><dd id="m-cur">—</dd></div>
+        <div><dt>Part conseillée</dt><dd id="m-tgt">—</dd></div>
+        <div><dt>Écart</dt><dd id="m-gap">—</dd></div>
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2>Les dernières semaines</h2>
+      <table class="tbl"><thead><tr><th>Semaine du</th><th>Volatilité</th><th>Part</th></tr></thead><tbody id="weeks"></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>La règle depuis 2009</h2>
+      <p class="muted">Même règle appliquée à l'ETF CW8, en euros, frais compris.</p>
+      <div class="duo" id="bt"></div>
+    </div>
+
+    <details class="card settings">
+      <summary>Réglages de la règle</summary>
+      <label class="field"><span>Volatilité acceptée</span><select id="s-tgt"><option value="0.15">15 % / an</option><option value="0.2">20 % / an</option><option value="0.3">30 % / an</option></select></label>
+      <label class="field"><span>Réajuster si l'écart dépasse</span><select id="s-band"><option value="0.1">10 points</option><option value="0.2">20 points</option></select></label>
+      <label class="field"><span>Mesure de la volatilité</span><select id="s-win"><option value="60">60 séances</option><option value="90">90 séances</option></select></label>
+      <p class="muted">Réglage retenu : 20 % et 20 points. La règle protège dans les longues crises, réagit avec retard aux krachs rapides et coûte un peu de rendement en temps normal.</p>
+    </details>
+  </section>
+
+  <!-- OBJECTIF -->
+  <section class="view" id="v-objectif" data-title="Mon objectif" hidden>
+    <div class="card hero">
+      <div class="hero-k" id="o-k">Chances d'atteindre l'objectif</div>
+      <div class="hero-v" id="o-prob">—</div>
+      <div class="hero-s" id="o-sub">—</div>
+    </div>
+
+    <div class="card">
+      <h2>Mon plan</h2>
+      <label class="field"><span>Objectif</span><input id="o-target" type="number" inputmode="decimal" value="70000"><em>€</em></label>
+      <div class="pair">
+        <label class="field"><span>Mon âge</span><input id="o-age" type="number" inputmode="numeric" value="21"><em>ans</em></label>
+        <label class="field"><span>Âge visé</span><input id="o-goal" type="number" inputmode="numeric" value="36"><em>ans</em></label>
+      </div>
+      <label class="field"><span>Déjà investi</span><input id="o-cap" type="number" inputmode="decimal" value="1000"><em>€</em></label>
+      <div class="pair">
+        <label class="field"><span>Par mois maintenant</span><input id="o-m1" type="number" inputmode="decimal" value="50"><em>€</em></label>
+        <label class="field"><span>Jusqu'à</span><input id="o-until" type="number" inputmode="numeric" value="24"><em>ans</em></label>
+      </div>
+      <label class="field"><span>Par mois ensuite</span><input id="o-m2" type="number" inputmode="decimal" value="300"><em>€</em></label>
+      <label class="field"><span>Montants</span><select id="o-real"><option value="1">Corrigés de l'inflation</option><option value="0">En euros courants</option></select></label>
+    </div>
+
+    <div class="card">
+      <h2>Ce que ça donne</h2>
+      <dl class="rows">
+        <div><dt>Total versé</dt><dd id="o-paid">—</dd></div>
+        <div><dt>Départ défavorable</dt><dd id="o-lo">—</dd></div>
+        <div><dt>Départ typique</dt><dd id="o-med">—</dd></div>
+        <div><dt>Départ favorable</dt><dd id="o-hi">—</dd></div>
+      </dl>
+      <div class="chart"><svg id="o-chart" viewBox="0 0 360 220" role="img" aria-label="Projection de la valeur du PEA"></svg></div>
+      <div class="legend"><span><i class="band"></i>8 départs sur 10</span><span><i style="background:var(--accent)"></i>typique</span><span><i style="background:var(--muted)"></i>versé</span><span><i style="background:var(--good)"></i>objectif</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Pour y arriver</h2>
+      <p class="muted" id="o-need-k">Versement mensuel nécessaire après tes études :</p>
+      <dl class="rows">
+        <div><dt>Une chance sur deux</dt><dd id="o-n50">—</dd></div>
+        <div><dt>9 chances sur 10</dt><dd id="o-n90">—</dd></div>
+      </dl>
+      <p class="muted" id="o-note">—</p>
+    </div>
+  </section>
+
+  <!-- SUIVI -->
+  <section class="view" id="v-suivi" data-title="Mon suivi" hidden>
+    <div class="card hero">
+      <div class="hero-k">Valeur de mon PEA</div>
+      <div class="hero-v" id="t-val">—</div>
+      <div class="hero-s" id="t-sub">Ajoute un premier relevé pour démarrer le suivi.</div>
+      <div class="bar"><i id="t-bar"></i></div>
+      <div class="hero-s" id="t-goal">—</div>
+    </div>
+
+    <div class="card">
+      <h2>Nouveau relevé</h2>
+      <label class="field"><span>Date</span><input id="t-date" type="date"></label>
+      <label class="field"><span>Total versé à ce jour</span><input id="t-paid" type="number" inputmode="decimal" placeholder="ex. 1 150"><em>€</em></label>
+      <label class="field"><span>Valeur du PEA</span><input id="t-value" type="number" inputmode="decimal" placeholder="ex. 1 210"><em>€</em></label>
+      <button class="btn" id="t-add" type="button">Enregistrer le relevé</button>
+    </div>
+
+    <div class="card">
+      <h2>Évolution</h2>
+      <div class="chart"><svg id="t-chart" viewBox="0 0 360 200" role="img" aria-label="Évolution du PEA"></svg></div>
+      <div class="legend"><span><i style="background:var(--accent)"></i>valeur</span><span><i style="background:var(--muted)"></i>versé</span></div>
+      <table class="tbl"><thead><tr><th>Date</th><th>Versé</th><th>Valeur</th><th></th></tr></thead><tbody id="t-list"></tbody></table>
+    </div>
+
+    <details class="card settings">
+      <summary>Sauvegarde</summary>
+      <p class="muted">Tes relevés sont enregistrés seulement sur ce téléphone. Copie la sauvegarde de temps en temps et colle-la dans tes notes.</p>
+      <button class="btn ghost" id="b-copy" type="button">Copier la sauvegarde</button>
+      <label class="field col"><span>Restaurer une sauvegarde</span><textarea id="b-text" rows="3" placeholder="Colle ici le texte de sauvegarde"></textarea></label>
+      <button class="btn ghost" id="b-restore" type="button">Restaurer</button>
+      <p class="muted" id="b-msg"></p>
+    </details>
+  </section>
+
+  <!-- REPERES -->
+  <section class="view" id="v-reperes" data-title="Repères" hidden>
+    <div class="card"><h2>Mon plan</h2><ul class="list">
+      <li><b>PEA chez Trade Republic</b>, ou PEA Jeune entre 18 et 25 ans si tu es rattaché au foyer fiscal de tes parents.</li>
+      <li><b>Un ETF MSCI World éligible PEA</b> : DCAM ou WPEA (environ 0,20 % de frais par an), sinon CW8 (environ 0,38 %).</li>
+      <li><b>Versement mensuel</b> par plan programmé, sans frais. Augmente-le dès que tu travailles : c'est le levier principal.</li>
+      <li><b>Le dosage à 20 %</b> est un airbag : il réduit les pires chutes, il ne fait pas gagner plus.</li>
+    </ul></div>
+    <div class="card"><h2>Chaque semaine</h2><ol class="list">
+      <li>Ouvre l'onglet <b>Semaine</b>.</li>
+      <li>Entre la valeur de tes ETF et tes liquidités.</li>
+      <li>N'agis que si le verdict le demande, environ 3 fois par an.</li>
+      <li>Une fois par mois, ajoute un relevé dans <b>Suivi</b>.</li>
+    </ol></div>
+    <div class="card"><h2>Les règles du PEA</h2><ul class="list">
+      <li><b>Avant 5 ans</b>, un retrait ferme le plan et les gains sont taxés à 31,4 %.</li>
+      <li><b>Après 5 ans</b>, retraits partiels possibles sans fermer le plan ; seuls les gains retirés supportent 18,6 % de prélèvements sociaux (taux 2026).</li>
+      <li>Les 5 ans comptent depuis <b>l'ouverture</b> : ouvrir tôt fait démarrer le compteur.</li>
+      <li>Plafond de versements : 150 000 € (20 000 € pour le PEA Jeune, qui devient un PEA classique à 25 ans).</li>
+    </ul></div>
+    <div class="card"><h2>Ce qu'on a appris</h2><ul class="list">
+      <li>Sur environ 250 stratégies de trading testées sérieusement, <b>aucune</b> n'est restée rentable après les vrais frais et sur des données jamais vues.</li>
+      <li>À court terme, les anomalies font la taille du spread ; à long terme, il n'y en a plus.</li>
+      <li>Un robot qui gagne 9 fois sur 10 peut tout reperdre sur le dixième trade.</li>
+      <li>Quand un vendeur montre ses meilleurs comptes, demande combien il en a testé.</li>
+      <li>Ce qui a fait le résultat : <b>le temps, la régularité des versements et ne pas vendre pendant les chutes</b>.</li>
+    </ul></div>
+    <div class="card"><h2>À savoir</h2><ul class="list">
+      <li>Les projections reposent sur les actions mondiales depuis 2000 : deux grosses crises, mais aussi une excellente décennie américaine.</li>
+      <li>Les frais Trade Republic (1 € par ordre, plans gratuits) et la fiscalité sont ceux relevés en novembre 2026 : vérifie-les.</li>
+      <li>Cette application applique des règles mécaniques. Ce n'est pas un conseil d'investissement.</li>
+    </ul></div>
+  </section>
+</main>
+
+<nav class="tabs" aria-label="Navigation">
+  <button data-v="semaine" aria-label="Semaine"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>Semaine</span></button>
+  <button data-v="objectif" aria-label="Objectif"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" class="fill"/></svg><span>Objectif</span></button>
+  <button data-v="suivi" aria-label="Suivi"><svg viewBox="0 0 24 24"><path d="M4 19h16"/><path d="M5 15l4.5-4.5 3.5 3 6-7"/></svg><span>Suivi</span></button>
+  <button data-v="reperes" aria-label="Repères"><svg viewBox="0 0 24 24"><path d="M5 4.5h9.5a3 3 0 0 1 3 3V20H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h9.5"/></svg><span>Repères</span></button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>
