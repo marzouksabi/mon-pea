@@ -58,16 +58,35 @@ def hicp():
     return {'start': rows[0][0], 'v': [v for _, v in rows]}
 
 
+def index_series(sym):
+    """Clotures quotidiennes d'un indice sur 2 ans ; la seance du jour est retiree tant qu'elle n'est pas terminee."""
+    from zoneinfo import ZoneInfo
+    j = json.loads(get(f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=2y'))['chart']['result'][0]
+    ny = ZoneInfo('America/New_York')
+    rows = [(dt.datetime.fromtimestamp(t, ny).date(), round(c, 2)) for t, c in zip(j['timestamp'], j['indicators']['quote'][0]['close']) if c]
+    now = dt.datetime.now(ny)
+    if rows and rows[-1][0] == now.date() and (now.hour, now.minute) < (16, 30):
+        rows.pop()
+    if len(rows) < 300:
+        raise ValueError('historique trop court')
+    days = [(d - dt.date(1970, 1, 1)).days for d, _ in rows]
+    return {'d': [days[0]] + [days[i] - days[i - 1] for i in range(1, len(days))], 'c': [c for _, c in rows]}
+
+
+def indices():
+    return {'spx': index_series('%5EGSPC'), 'ndx': index_series('%5ENDX')}
+
+
 def main():
     old = json.loads(OUT.read_text(encoding='utf8')) if OUT.exists() else {}
     new = dict(old)
-    for key, fn in (('etf', etf), ('msci', msci), ('hicp', hicp)):
+    for key, fn in (('etf', etf), ('msci', msci), ('hicp', hicp), ('idx', indices)):
         try:
             new[key] = fn()
             print(f'{key} : ok')
         except Exception as e:  # noqa: BLE001
             print(f'{key} : échec ({e}), ancienne donnée conservée')
-    if not all(k in new for k in ('etf', 'msci', 'hicp')):
+    if not all(k in new for k in ('etf', 'msci', 'hicp')):  # les indices sont facultatifs
         raise SystemExit('données incomplètes et aucune version précédente')
     new['updated'] = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%MZ')
     OUT.parent.mkdir(exist_ok=True)

@@ -5,6 +5,7 @@ on:
     branches: [main]
   schedule:
     - cron: '30 18 * * 1-5'   # chaque soir de semaine, après la clôture de Paris
+    - cron: '40 21 * * 1-5'   # après la clôture de New York (indices du repli)
   workflow_dispatch:
 
 permissions:

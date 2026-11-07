@@ -1,5 +1,5 @@
 /* Garde l'application disponible hors ligne. Les cours sont toujours redemandés en priorité au réseau. */
-var CACHE = 'mon-pea-v1';
+var CACHE = 'mon-pea-v2';
 var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png'];
 
 self.addEventListener('install', function (e) {

@@ -89,7 +89,7 @@ h2{font-size:19px;font-weight:650;margin:0 0 8px;letter-spacing:-.01em}
 .list{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;color:var(--ink-2);font-size:15px}
 .list b{color:var(--ink)}
 
-.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;display:grid;grid-template-columns:repeat(4,1fr);
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;display:grid;grid-template-columns:repeat(5,1fr);
   background:var(--tab);-webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px);
   border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
 .tabs button{border:0;background:none;color:var(--muted);font:inherit;font-size:11px;font-weight:600;display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0}
@@ -97,3 +97,13 @@ h2{font-size:19px;font-weight:650;margin:0 0 8px;letter-spacing:-.01em}
 .tabs svg .fill{fill:currentColor}
 .tabs button[aria-current="page"]{color:var(--accent)}
 [hidden]{display:none!important}
+
+/* Repli */
+.sig{border-radius:14px;background:var(--field);padding:14px;margin:0 0 10px}
+.sig:last-child{margin-bottom:0}
+.sig h3{margin:0 0 2px;font-size:13px;font-weight:600;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em}
+.sig .act{font-size:18px;font-weight:650;line-height:1.3}
+.sig small{display:block;font-size:14px;color:var(--ink-2);margin-top:4px}
+.sig.buy{background:var(--accent-soft)}
+.sig.hold{background:var(--good-soft)}
+.pos{color:var(--good)} .neg{color:var(--crit)}

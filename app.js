@@ -18,7 +18,7 @@
   var MON = { lv: [], cpi: [], start: '' };
 
   /* ---------- onglets ---------- */
-  var VIEWS = ['semaine', 'objectif', 'suivi', 'reperes'];
+  var VIEWS = ['semaine', 'objectif', 'suivi', 'repli', 'reperes'];
   function show(v) {
     if (VIEWS.indexOf(v) < 0) v = 'semaine';
     VIEWS.forEach(function (k) { $('v-' + k).hidden = k !== v; });
@@ -279,6 +279,87 @@
     } catch (e) { $('b-msg').textContent = 'Ce texte n\'est pas une sauvegarde valide.'; }
   });
 
+  /* ---------- repli : RSI 2 sous 10 au-dessus de la moyenne 200, sortie au-dessus de la moyenne 5 ---------- */
+  var IDX = {}, IDX_NAMES = { spx: 'S&P 500', ndx: 'Nasdaq-100' };
+  var JOURS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+  var px = function (v) { return v.toLocaleString('fr-FR', { maximumFractionDigits: 0 }); };
+  var sgn = function (v) { return (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1).replace('.', ',') + ' %'; };
+  var shortDay = function (d) { var x = new Date(d * 86400000); return x.getUTCDate() + ' ' + MOIS[x.getUTCMonth()]; };
+
+  function replay(c) {
+    var n = c.length, au = [0], ad = [0], i, j, trades = [], open = null;
+    for (i = 1; i < n; i++) { var d = c[i] - c[i - 1]; au[i] = (au[i - 1] + Math.max(d, 0)) / 2; ad[i] = (ad[i - 1] + Math.max(-d, 0)) / 2; }
+    var sma = function (k, w) { var s = 0; for (var q = k - w + 1; q <= k; q++) s += c[q]; return s / w; };
+    var rsi = function (k) { return ad[k] === 0 ? 100 : 100 - 100 / (1 + au[k] / ad[k]); };
+    for (i = 199; i < n; i++) {
+      if (c[i] > sma(i, 200) && rsi(i) < 10) {
+        j = i + 1;
+        while (j < n && !(c[j] > sma(j, 5)) && j - i < 10) j++;
+        if (j >= n) { open = i; break; }
+        trades.push([i, j]); i = j;
+      }
+    }
+    return { trades: trades, open: open, au: au[n - 1], ad: ad[n - 1] };
+  }
+
+  function closeParis(day) {
+    var t, h;
+    for (h = 19; h <= 22; h++) {
+      t = new Date(day * 86400000 + h * 3600000);
+      if (+new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(t) === 16) break;
+    }
+    return new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(t).replace(':', ' h ');
+  }
+
+  function renderRepli() {
+    if (!IDX.spx) return;
+    var size = num('r-size'); if (!(size > 0)) size = 10000;
+    store.set('repli-size', $('r-size').value);
+    var html = '', posRows = '', rows = [], lastSignal = -1, lastDay = 0, sums = [];
+    Object.keys(IDX_NAMES).forEach(function (k) {
+      var c = IDX[k].c, days = IDX[k].days, n = c.length, st = replay(c), P = c[n - 1], nm = IDX_NAMES[k], cls = 'sig', act, sub;
+      lastDay = days[n - 1];
+      if (st.open !== null) {
+        var e = st.open, held = n - e, Y = (c[n - 4] + c[n - 3] + c[n - 2] + c[n - 1]) / 4;
+        cls += ' hold';
+        sub = 'Acheté le ' + shortDay(days[e]) + ' à ' + px(c[e]) + ' · ' + sgn(P / c[e] - 1) + ' à la dernière clôture.';
+        if (held >= 10) act = 'Vendre à la clôture ce soir';
+        else { act = 'En position : vendre si la clôture dépasse ' + px(Y); sub = (Y > P ? 'Soit ' + sgn(Y / P - 1) + ' par rapport à la dernière clôture. ' : 'Déjà au-dessus : vente quasi certaine. ') + sub + ' Sinon on garde (séance ' + held + ' sur 10).'; }
+        lastSignal = Math.max(lastSignal, days[e]);
+      } else {
+        var X = st.ad > 9 * st.au ? P + (st.ad - 9 * st.au) / 9 : P - (9 * st.au - st.ad), F = 0;
+        for (var q = n - 199; q < n; q++) F += c[q];
+        F /= 199;
+        if (X <= F) { act = 'Pas d\'achat possible ce soir'; sub = P <= F ? 'L\'indice est sous sa moyenne 200 jours (' + px(F) + ') : la règle reste à l\'écart.' : 'Il faudrait passer sous ' + px(X) + ', donc sous la moyenne 200 jours (' + px(F) + ').'; }
+        else {
+          cls += ' buy';
+          act = 'Acheter si la clôture est sous ' + px(X);
+          sub = 'Soit ' + sgn(X / P - 1) + ' par rapport à la dernière clôture (' + px(P) + '), et au-dessus de ' + px(F) + '.';
+        }
+      }
+      html += '<div class="' + cls + '"><h3>' + nm + '</h3><div class="act">' + act + '</div><small>' + sub + '</small></div>';
+      posRows += '<div><dt>' + nm + '</dt><dd>' + (size / P).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' × l\'indice</dd></div>';
+      var from = days[n - 1] - 365, s = 0, cnt = 0;
+      st.trades.forEach(function (t) {
+        lastSignal = Math.max(lastSignal, days[t[0]]);
+        if (days[t[0]] >= from) { var r = c[t[1]] / c[t[0]] - 1; s += r; cnt++; rows.push([days[t[0]], nm, shortDay(days[t[0]]), shortDay(days[t[1]]), r]); }
+      });
+      if (st.open !== null && days[st.open] >= from) rows.push([days[st.open], nm, shortDay(days[st.open]), 'en cours', P / c[st.open] - 1]);
+      sums.push(nm + ' : ' + cnt + ' trades, ' + sgn(s) + ' cumulés');
+    });
+    var next = lastDay + 1; while ([0, 6].indexOf(new Date(next * 86400000).getUTCDay()) >= 0) next++;
+    var wd = new Date(next * 86400000).getUTCDay(), since = lastSignal >= 0 ? lastDay - lastSignal : null;
+    $('r-when').innerHTML = 'Prochaine clôture de New York : <b>' + JOURS[wd] + ' ' + shortDay(next) + ' à ' + closeParis(next) + '</b> (heure de Paris), sauf jour férié américain. ' +
+      'Agis dans les 10 dernières minutes. Cours au ' + dayStr(lastDay) + '.' + (since !== null ? ' Dernier signal d\'achat il y a ' + since + ' jours.' : '');
+    $('r-now').innerHTML = html;
+    $('r-pos').innerHTML = posRows;
+    rows.sort(function (a, b) { return b[0] - a[0]; });
+    $('r-trades').innerHTML = rows.length ? rows.map(function (r) {
+      return '<tr><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td><td class="' + (r[4] >= 0 ? 'pos' : 'neg') + '">' + sgn(r[4]) + '</td></tr>';
+    }).join('') : '<tr><td colspan="4">Aucun trade sur 12 mois.</td></tr>';
+    $('r-sum').textContent = sums.join(' · ');
+  }
+
   /* ---------- chargement ---------- */
   function loadRule() { var r = store.get('rule', null); if (r) { $('s-tgt').value = String(r.tgt); $('s-band').value = String(r.band); $('s-win').value = String(r.win); } }
   function loadObjectif() {
@@ -297,6 +378,8 @@
     $(id).addEventListener('input', function () { clearTimeout(tObj); tObj = setTimeout(function () { renderObjectif(); renderSuivi(); }, 250); });
     $(id).addEventListener('change', function () { renderObjectif(); renderSuivi(); });
   });
+  $('r-size').value = store.get('repli-size', '') || '';
+  $('r-size').addEventListener('input', renderRepli);
   show(store.get('tab', 'semaine'));
 
   fetch('data/market.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (D) {
@@ -309,6 +392,10 @@
     $('stamp').textContent = 'Cours de l\'ETF CW8 au ' + dayStr(ETF.days[ETF.days.length - 1]) + ' · MSCI World jusqu\'à fin ' +
       MOIS[(m0 - 1 + MON.lv.length - 1) % 12] + ' ' + (y0 + Math.floor((m0 - 1 + MON.lv.length - 1) / 12));
     renderAll();
+    if (D.idx) {
+      Object.keys(IDX_NAMES).forEach(function (k) { var dd = 0; IDX[k] = { c: D.idx[k].c, days: D.idx[k].d.map(function (x) { dd += x; return dd; }) }; });
+      renderRepli();
+    }
   }).catch(function () {
     $('stamp').textContent = 'Cours indisponibles : vérifie ta connexion puis rouvre l\'application.';
   });
