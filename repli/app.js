@@ -160,9 +160,13 @@
     ticks.forEach(function (t) { g += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(t) + '" y2="' + Y(t) + '"/><text class="ax" x="' + (L - 6) + '" y="' + (Y(t) + 4) + '" text-anchor="end">' + (o.fmt ? o.fmt(t) : nf(t)) + '</text>'; });
     var xl = [0, Math.floor(n / 2), n - 1];
     xl.forEach(function (i, q) { g += '<text class="ax" x="' + X(i) + '" y="' + (H - 4) + '" text-anchor="' + (q === 0 ? 'start' : q === 2 ? 'end' : 'middle') + '">' + shortDay(o.x[i]) + '</text>'; });
+    refs.forEach(function (r) {
+      if (r.zone === 'above') g += '<rect class="zone-good" x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + Math.max(0, Y(r.v) - T) + '"/>';
+      if (r.zone === 'below') g += '<rect class="zone-crit" x="' + L + '" y="' + Y(r.v) + '" width="' + (W - L - R) + '" height="' + Math.max(0, H - B - Y(r.v)) + '"/>';
+    });
     refs.slice().sort(function (a, b) { return b.v - a.v; }).forEach(function (r, q, arr) {
       var y = Y(r.v), prev = q ? Y(arr[q - 1].v) : -99, below = y - prev < 16 && q > 0;
-      g += '<line class="' + (r.cls || 'ref') + '" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text class="reflab" x="' + (W - R) + '" y="' + (below ? y + 14 : y - 5) + '" text-anchor="end">' + esc(r.label) + '</text>';
+      g += '<line class="' + (r.cls || 'ref') + '" x1="' + (r.tail ? W - R - (W - L - R) * 0.14 : L) + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text class="reflab" x="' + (W - R) + '" y="' + (below ? y + 14 : y - 5) + '" text-anchor="end">' + esc(r.label) + '</text>';
     });
     o.series.forEach(function (s) {
       var d = ''; s.v.forEach(function (v, i) { if (isFinite(v)) d += (d ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); });
@@ -171,7 +175,8 @@
     g += '<g class="hov" style="display:none"><line class="cross" y1="' + T + '" y2="' + (H - B) + '"/>' + o.series.map(function (s) { return '<circle class="dot" r="4" fill="var(' + s.c + ')"/>'; }).join('') + '</g>';
     g += '<rect x="' + L + '" y="0" width="' + (W - L - R) + '" height="' + H + '" fill="transparent" class="hit"/>';
     el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(o.label || '') + '">' + g + '</svg><div class="tip" hidden></div>' +
-      (o.series.length > 1 ? '<div class="legend">' + o.series.map(function (s) { return '<span><i style="background:var(' + s.c + ')"></i>' + esc(s.name) + '</span>'; }).join('') + '</div>' : '');
+      (o.series.length > 1 ? '<div class="legend">' + o.series.map(function (s) { return '<span><i style="background:var(' + s.c + ')"></i>' + esc(s.name) + '</span>'; }).join('') + '</div>' : '') +
+      (o.note ? '<p class="chart-note">' + esc(o.note) + '</p>' : '');
     var svg = el.querySelector('svg'), hov = el.querySelector('.hov'), tip = el.querySelector('.tip'), cross = hov.querySelector('line'), dots = hov.querySelectorAll('circle');
     function move(ev) {
       var r = svg.getBoundingClientRect(), sx = (ev.clientX - r.left) * W / r.width, i = Math.round((sx - L) / (W - L - R) * (n - 1));
@@ -259,7 +264,8 @@
     lineChart($('ch-' + k), {
       x: I.days.slice(from), height: 170, label: I.name + ', clôtures et moyenne 200 jours',
       series: [{ name: 'Clôture', v: c.slice(from), c: '--s1' }, { name: 'Moyenne 200 jours', v: a.st.sma200.slice(from), c: '--s2' }],
-      ref: a.mode === 'pos' ? { v: a.Y, label: 'seuil de vente ' + px(a.Y) } : (a.possible ? { v: a.X, label: 'seuil d\'achat ' + px(a.X) } : null),
+      refs: a.mode === 'pos' ? [{ v: a.Y, label: px(a.Y), cls: 'ref-sell', tail: true }] : (a.possible ? [{ v: a.X, label: px(a.X), cls: 'ref-buy', tail: true }] : []),
+      note: a.mode === 'pos' ? 'Trait vert à droite : seuil de vente de la prochaine clôture (' + px(a.Y) + ').' : (a.possible ? 'Trait gris à droite : seuil d\'achat de la prochaine clôture (' + px(a.X) + ').' : ''),
       fmt: function (v) { return nf(v, 0); }
     });
   }
@@ -348,12 +354,16 @@
       }
       html += '<div class="stats"><div><span>Prix d\'achat</span><b>' + px(p.p1) + '</b></div><div><span>Prix actuel</span><b>' + px(cur) + '</b></div>' +
         '<div><span>Valeur</span><b>' + usd(cur * p.lots * ct) + '</b></div><div><span>' + (stop ? 'Stop' : 'Stop') + '</span><b>' + (stop ? px(stop) : 'aucun') + '</b></div></div>' +
-        '<h3 style="margin-top:14px">Évolution depuis l\'achat</h3><div class="chart" id="pos-ch-' + i + '"></div>';
+        '<h3 style="margin-top:14px">Évolution depuis l\'achat</h3><div class="chart" id="pos-ch-' + i + '"></div>' +
+        '<p class="chart-note">' + (a && !hit ? 'On vend le soir où la clôture (bleu) passe au-dessus du seuil du jour (orange). Le seuil est recalculé chaque jour : c\'est la moyenne des 4 clôtures précédentes. Le dernier point orange est celui de la prochaine clôture.' : '') +
+        (stop ? ' Zone rouge : le stop vend automatiquement.' : '') + '</p>';
       $('pos-' + i).innerHTML = html;
-      var from = Math.max(0, I.days.findIndex(function (d) { return d >= p.d1; }) - 5), xs = I.days.slice(from), ys = I.c.slice(from), refs = [{ v: p.p1, label: 'achat ' + px(p.p1), cls: 'ref-buy' }];
-      if (a && !a.forced) refs.push({ v: a.Y, label: 'seuil de vente ' + px(a.Y), cls: 'ref-sell' });
-      if (stop) refs.push({ v: stop, label: 'stop ' + px(stop), cls: 'ref-stop' });
-      lineChart($('pos-ch-' + i), { x: xs, series: [{ name: I.name, v: ys, c: '--s1' }], refs: refs, height: 170, label: I.name + ' depuis l\'achat', fmt: function (v) { return nf(v, 0); } });
+      var ei = I.days.findIndex(function (d) { return d >= p.d1; }), from = Math.max(0, ei - 5), xs = I.days.slice(from), ys = I.c.slice(from), refs = [{ v: p.p1, label: 'achat ' + px(p.p1), cls: 'ref-buy' }];
+      var thr = xs.map(function (d, q) { var j = from + q; return j > ei ? (I.c[j - 1] + I.c[j - 2] + I.c[j - 3] + I.c[j - 4]) / 4 : NaN; });
+      var series = [{ name: 'Clôture du ' + I.name, v: ys, c: '--s1' }];
+      if (a && !hit) { xs = xs.concat([session]); ys = ys.concat([NaN]); thr = thr.concat([a.Y]); series[0].v = ys; series.push({ name: 'Seuil de vente du jour', v: thr, c: '--s2' }); }
+      if (stop) refs.push({ v: stop, label: 'stop ' + px(stop) + ' : vente automatique en dessous', cls: 'ref-stop', zone: 'below' });
+      lineChart($('pos-ch-' + i), { x: xs, series: series, refs: refs, height: 190, label: I.name + ' depuis l\'achat', fmt: function (v) { return nf(v, 0); } });
     });
     return tot;
   }
@@ -601,7 +611,7 @@
     document.querySelectorAll('.nav button').forEach(function (b) { if (b.dataset.v === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
     $('title').textContent = $('v-' + v).dataset.title;
     store.set('tab', v); window.scrollTo(0, 0);
-    if (A.spx) { if (v === 'bord') renderBord(); if (v === 'journal') renderJournal(); if (v === 'regle') renderBilan(); }
+    if (A.spx) { if (v === 'bord') renderBord(); if (v === 'journal') renderJournal(); if (v === 'regle') renderBilan(); if (v === 'ordres') renderOrdres(); }
   }
   document.querySelectorAll('.nav button').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.v); }); });
   document.addEventListener('click', function (ev) {
