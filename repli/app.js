@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 07/11 23:23';
+  var VERSION = 'version du 07/11 23:31';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -106,6 +106,8 @@
     return { lots: +lots.toFixed(6), notional: lots * ct * price };
   }
   var stopPct = function () { return 0.015 / cfg.lev; };
+  var levMax = function () { return cfg.phase == 3 ? 15 : 25; };
+  function margeTxt(notional) { var m = notional / levMax(); return usd(m) + ' (' + nf(m / cfg.size * 100, 0) + ' %)'; }
   /* date de vente obligatoire : 10e jour de Bourse apres l'achat */
   function deadline(a) { var d = session; for (var q = a.held; q < 10; q++) d = nextTrading(d); return d; }
 
@@ -442,7 +444,8 @@
         html += '<div class="big-state ' + (go ? 'act' : 'watch') + '">' + (go ? '✓ Entrer ce soir' : go === false ? '✋ Pas d\'entrée à ce prix' : '👀 Entrée possible ce soir') + '</div>' +
           thermo([{ v: a.X, label: 'entrée', cls: 'k-in' }], cur, { side: 'left', v: a.X, cls: 'z-in', label: '← zone d\'entrée : prix de 22 h sous ' + px(a.X) }) +
           '<div class="tiles">' + tile('Niveau d\'entrée', px(a.X)) + tile('Prix d\'hier soir', px(a.P)) + tile('Baisse nécessaire', pct(a.X / a.P - 1)) +
-          tile('Lots à acheter', nf(lt.lots, 2)) + tile('Montant', usd(lt.notional)) + tile('Stop', cfg.phase == 3 ? px(stop) : 'aucun') + '</div>' + inputBox(o) +
+          tile('Lots à acheter', nf(lt.lots, 2)) + tile('Montant', usd(lt.notional)) + tile('Stop', cfg.phase == 3 ? px(stop) : 'aucun') +
+          tile('Marge bloquée', margeTxt(lt.notional)) + tile('Levier max', '1:' + levMax()) + tile('Les 2 indices', margeTxt(2 * cfg.size * cfg.lev)) + '</div>' + inputBox(o) +
           '<div class="act-line">' + BUY + ' MT5 → <b>' + o.I.sym + '</b> → Ordre au marché → <b>' + nf(lt.lots, 2) + ' lots</b> → <b>Buy</b></div>';
       } else {
         html += '<div class="big-state idle">Pas d\'entrée ce soir</div>' +
@@ -462,7 +465,8 @@
           { side: 'right', v: a2.Y, cls: 'z-out', label: 'zone de sortie : prix de 22 h au-dessus de ' + px(a2.Y) + ' →' }) +
         '<div class="days"><div class="track"><div class="fill" style="width:' + prog * 100 + '%"></div></div><div class="labels"><span>entrée ' + shortDay(tr.d1) + '</span><span><b>' + jours(last - tr.d1) + '</b></span><span>sortie max ' + shortDay(tr.deadline) + '</span></div></div>' +
         '<div class="tiles">' + tile('Prix d\'entrée', px(tr.p1)) + tile('Prix actuel', px(tr.cur)) + tile('Niveau de sortie', px(a2.Y)) +
-        tile('À faire pour sortir', a2.Y > tr.cur ? pct(a2.Y / tr.cur - 1) : 'atteint', a2.Y > tr.cur ? '' : 'pos') + tile('Lots', nf(tr.lots, 2)) + tile('Stop', tr.stop ? px(tr.stop) : 'aucun') + '</div>' +
+        tile('À faire pour sortir', a2.Y > tr.cur ? pct(a2.Y / tr.cur - 1) : 'atteint', a2.Y > tr.cur ? '' : 'pos') + tile('Lots', nf(tr.lots, 2)) + tile('Stop', tr.stop ? px(tr.stop) : 'aucun') + tile('Valeur du trade', usd(tr.cur * tr.lots * (+cfg.ct[o.k] || 1))) +
+          tile('Marge bloquée', margeTxt(tr.cur * tr.lots * (+cfg.ct[o.k] || 1))) + tile('Levier max', '1:' + levMax()) + '</div>' +
         inputBox(o) + (exitNow ? '<div class="act-line"><span class="side out">SORTIR</span> MT5 → onglet Trade → <b>croix ×</b> sur ' + o.I.sym + ' (pas « Sell »)</div>' : '');
       k = o.k; var ei = IDX[k].days.findIndex(function (d) { return d >= tr.d1; });
       chart = { k: k, from: Math.max(0, ei - 5), entry: ei, exitLine: true, refs: [{ v: tr.p1, label: 'entrée ' + px(tr.p1), cls: 'ref-buy' }].concat(tr.stop ? [{ v: tr.stop, label: 'stop', cls: 'ref-stop', zone: 'below' }] : []), y: a2.Y };
