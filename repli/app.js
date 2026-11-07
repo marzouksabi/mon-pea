@@ -150,7 +150,8 @@
   function lineChart(el, o) {
     var W = Math.max(280, el.clientWidth || 600), H = o.height || 170, L = 50, R = 12, T = 10, B = 22, n = o.x.length;
     var vals = []; o.series.forEach(function (s) { s.v.forEach(function (v) { if (isFinite(v)) vals.push(v); }); });
-    if (o.ref) vals.push(o.ref.v);
+    var refs = o.refs || (o.ref ? [o.ref] : []);
+    refs.forEach(function (r) { vals.push(r.v); });
     var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
     var X = function (i) { return L + (W - L - R) * (n > 1 ? i / (n - 1) : 0); }, Y = function (v) { return T + (H - T - B) * (1 - (v - lo) / (hi - lo)); };
     var ticks = [], step = Math.pow(10, Math.floor(Math.log10((hi - lo) / 3))), m = (hi - lo) / step > 6 ? 2 : 1; step *= m;
@@ -159,7 +160,10 @@
     ticks.forEach(function (t) { g += '<line class="gl" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(t) + '" y2="' + Y(t) + '"/><text class="ax" x="' + (L - 6) + '" y="' + (Y(t) + 4) + '" text-anchor="end">' + (o.fmt ? o.fmt(t) : nf(t)) + '</text>'; });
     var xl = [0, Math.floor(n / 2), n - 1];
     xl.forEach(function (i, q) { g += '<text class="ax" x="' + X(i) + '" y="' + (H - 4) + '" text-anchor="' + (q === 0 ? 'start' : q === 2 ? 'end' : 'middle') + '">' + shortDay(o.x[i]) + '</text>'; });
-    if (o.ref) g += '<line class="ref" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(o.ref.v) + '" y2="' + Y(o.ref.v) + '"/><text class="reflab" x="' + (W - R) + '" y="' + (Y(o.ref.v) - 5) + '" text-anchor="end">' + esc(o.ref.label) + '</text>';
+    refs.slice().sort(function (a, b) { return b.v - a.v; }).forEach(function (r, q, arr) {
+      var y = Y(r.v), prev = q ? Y(arr[q - 1].v) : -99, below = y - prev < 16 && q > 0;
+      g += '<line class="' + (r.cls || 'ref') + '" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text class="reflab" x="' + (W - R) + '" y="' + (below ? y + 14 : y - 5) + '" text-anchor="end">' + esc(r.label) + '</text>';
+    });
     o.series.forEach(function (s) {
       var d = ''; s.v.forEach(function (v, i) { if (isFinite(v)) d += (d ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); });
       g += '<path class="ln" d="' + d + '" stroke="var(' + s.c + ')"/>';
@@ -303,13 +307,68 @@
       '<button class="btn ghost small" data-go="journal">Ouvrir le journal</button>';
   }
 
+  /* positions ouvertes : celles du journal, sinon celles de la regle (theoriques) */
+  function positions() {
+    var out = [];
+    ['spx', 'ndx'].forEach(function (k) {
+      var a = A[k], mine = trades.filter(function (t) { return t.idx === k && !t.d2; });
+      if (mine.length) mine.forEach(function (t) { out.push({ k: k, real: true, d1: dn(t.d1), p1: t.p1, lots: t.lots, fee: +t.fee || 0, kind: t.kind, rule: a.mode === 'pos' ? a : null }); });
+      else if (a.mode === 'pos') out.push({ k: k, real: false, d1: a.entryDay, p1: a.entry, lots: lotsFor(k, a.entry).lots, fee: 0, rule: a });
+    });
+    return out;
+  }
+
+  function renderPositions() {
+    var P = positions(), box = $('o-pos'), tot = 0;
+    $('o-sec2').textContent = P.length ? (P.length === 1 ? 'Une position ouverte.' : P.length + ' positions ouvertes.') + ' Les chiffres se mettent à jour avec le prix du moment.' :
+      'Aucune position ouverte pour l\'instant.';
+    if (!P.length) { box.innerHTML = '<article class="card s12"><p class="empty" style="padding:0">Rien en cours. Quand la règle achète, la position apparaîtra ici avec son résultat et son graphique.</p></article>'; return 0; }
+    box.innerHTML = P.map(function (p, i) { return '<article class="card ' + (P.length > 1 ? 's6' : 's12') + ' posc" id="pos-' + i + '"></article>'; }).join('');
+    P.forEach(function (p, i) {
+      var I = IDX[p.k], a = p.rule, np = nowPrice(p.k, session), cur = np ? np.p : I.c[I.c.length - 1], ct = +cfg.ct[p.k] || 1;
+      var pnl = (cur - p.p1) * p.lots * ct - p.fee, r = cur / p.p1 - 1, stop = cfg.phase == 3 ? p.p1 * (1 - stopPct()) : null; tot += pnl;
+      var pill = !p.real ? '<span class="pill none"><i></i>Selon la règle</span>' : '<span class="pill hold"><i></i>Noté au journal</span>';
+      var html = '<div class="head"><div><div class="name">' + I.name + '</div><div class="sym">' + I.sym + ' · ' + nf(p.lots, 2) + ' lots achetés le ' + shortDay(p.d1) + ' à ' + px(p.p1) + '</div></div>' + pill + '</div>' +
+        '<div class="pl ' + (pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(pnl) + '<small>' + pct(r) + '</small></div>' +
+        '<div class="src">' + (np ? 'Au prix ' + esc(np.src) + ' : ' + px(cur) : 'À la clôture du ' + shortDay(I.days[I.days.length - 1]) + ' : ' + px(cur)) + (p.real ? '' : ' · position théorique, pas encore notée dans le journal') + '</div>';
+      var hit = null;
+      if (stop) for (var q = 0; q < I.days.length; q++) if (I.days[q] > p.d1 && I.l[q] <= stop) { hit = I.days[q]; break; }
+      if (hit) {
+        html += '<div class="verdict sell">Stop touché le ' + longDay(hit) + '<small>Le cours est descendu sous ' + px(stop) + ' : MT5 a fermé la position automatiquement, avec une perte d\'environ ' +
+          usd(p.p1 * stopPct() * p.lots * ct) + '. Note la vente dans le journal avec le prix obtenu.</small></div>';
+      } else if (a) {
+        var dl = deadline(a), last = I.days[I.days.length - 1], prog = Math.max(0, Math.min(1, (last - p.d1) / Math.max(1, dl - p.d1)));
+        var need = a.Y / cur - 1;
+        html += '<div class="verdict ' + (a.forced ? 'sell' : need <= 0 ? 'sell' : 'ok') + '">' +
+          (a.forced ? 'Dernier jour : vendre à la clôture du ' + longDay(session) : need <= 0 ? 'Le prix dépasse le seuil de vente : vendre à la clôture' : 'On garde · il manque ' + pct(need) + ' pour vendre') +
+          '<small>Seuil de vente pour la prochaine clôture (' + longDay(session) + ') : ' + px(a.Y) + '. Il est recalculé chaque soir.</small></div>' +
+          '<div class="gauge"><div class="track"><div class="fill" style="width:' + prog * 100 + '%"></div></div><div class="labels"><span>Acheté le <b>' + shortDay(p.d1) + '</b></span><span>ouvert depuis <b>' + jours(last - p.d1) + '</b></span><span>vente au plus tard le <b>' + shortDay(dl) + '</b></span></div></div>';
+      } else {
+        html += '<div class="verdict sell">La règle n\'est pas en position sur cet indice<small>Si c\'est un trade d\'entretien, ferme-le et note la vente dans le journal.</small></div>';
+      }
+      html += '<div class="stats"><div><span>Prix d\'achat</span><b>' + px(p.p1) + '</b></div><div><span>Prix actuel</span><b>' + px(cur) + '</b></div>' +
+        '<div><span>Valeur</span><b>' + usd(cur * p.lots * ct) + '</b></div><div><span>' + (stop ? 'Stop' : 'Stop') + '</span><b>' + (stop ? px(stop) : 'aucun') + '</b></div></div>' +
+        '<h3 style="margin-top:14px">Évolution depuis l\'achat</h3><div class="chart" id="pos-ch-' + i + '"></div>';
+      $('pos-' + i).innerHTML = html;
+      var from = Math.max(0, I.days.findIndex(function (d) { return d >= p.d1; }) - 5), xs = I.days.slice(from), ys = I.c.slice(from), refs = [{ v: p.p1, label: 'achat ' + px(p.p1), cls: 'ref-buy' }];
+      if (a && !a.forced) refs.push({ v: a.Y, label: 'seuil de vente ' + px(a.Y), cls: 'ref-sell' });
+      if (stop) refs.push({ v: stop, label: 'stop ' + px(stop), cls: 'ref-stop' });
+      lineChart($('pos-ch-' + i), { x: xs, series: [{ name: I.name, v: ys, c: '--s1' }], refs: refs, height: 170, label: I.name + ' depuis l\'achat', fmt: function (v) { return nf(v, 0); } });
+    });
+    return tot;
+  }
+
   /* ordres */
   function renderOrdres() {
-    var cl = closeUTC(session);
+    var cl = closeUTC(session), nOrd = 0;
     $('o-when').textContent = hm(cl - 600000);
-    $('o-intro').innerHTML = '<h2>' + longDay(session).replace(/^./, function (c) { return c.toUpperCase(); }) + ', clôture à ' + hm(cl) + '</h2><p class="muted" style="margin:0">Compte ' + usd(cfg.size) + ', ' +
-      nf(cfg.lev, 1) + ' × par indice (' + usd(cfg.size * cfg.lev) + ' par position)' + (cfg.phase == 3 ? ', stop obligatoire à ' + nf(stopPct() * 100, 1) + ' %' : ', pas de stop pendant le challenge') +
-      '. Entre le prix affiché dans MT5 vers ' + hm(cl - 600000) + ' : le verdict et les lots se recalculent.</p>';
+    ['spx', 'ndx'].forEach(function (k) { if (A[k].mode === 'pos' || A[k].possible) nOrd++; });
+    var tot = renderPositions(), nPos = positions().length;
+    $('o-intro').innerHTML = '<h2>' + longDay(session).replace(/^./, function (c) { return c.toUpperCase(); }) + ' · clôture à ' + hm(cl) + '</h2><p class="muted" style="margin:0">Compte ' + usd(cfg.size) + ', ' +
+      nf(cfg.lev, 1) + ' × par indice (' + usd(cfg.size * cfg.lev) + ' par position)' + (cfg.phase == 3 ? ', stop obligatoire à ' + nf(stopPct() * 100, 1) + ' %' : ', pas de stop pendant le challenge') + '.</p>' +
+      '<div class="sum-row"><div><span>À surveiller ce soir</span><b>' + (nOrd ? nOrd + ' indice' + (nOrd > 1 ? 's' : '') : 'rien') + '</b></div><div><span>Positions en cours</span><b>' + (nPos || 'aucune') + '</b></div>' +
+      '<div><span>Résultat en cours</span><b class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + (nPos ? sUsd(tot) : '—') + '</b></div></div>';
+    $('o-sec1').textContent = 'Vers ' + hm(cl - 600000) + ', entre le prix vu dans MT5 : le verdict et le nombre de lots se recalculent.';
     ['spx', 'ndx'].forEach(function (k) {
       var a = A[k], I = IDX[k], np = nowPrice(k, session), p = np ? np.p : (a.mode === 'flat' ? (a.possible ? a.X : a.P) : a.P), v = verdict(a, np ? np.p : null);
       var head = '<div class="head"><div><div class="name">' + I.name + '</div><div class="sym">' + I.sym + '</div></div></div>', body;

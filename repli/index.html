@@ -49,13 +49,16 @@
     </section>
 
     <!-- ORDRES -->
-    <section class="view" id="v-ordres" data-title="Ordres de ce soir" hidden>
+    <section class="view" id="v-ordres" data-title="Ordres et positions" hidden>
       <div class="grid">
-        <article class="card s12 note" id="o-intro"></article>
+        <article class="card s12 summary" id="o-intro"></article>
+        <div class="sec s12"><span class="num">1</span><div><h2>À faire ce soir</h2><p class="muted" id="o-sec1">—</p></div></div>
         <article class="card s6" id="o-spx"></article>
         <article class="card s6" id="o-ndx"></article>
-        <article class="card s12">
-          <h2>Comment passer l'ordre dans MetaTrader 5</h2>
+        <div class="sec s12"><span class="num">2</span><div><h2>Mes positions en cours</h2><p class="muted" id="o-sec2">—</p></div></div>
+        <div class="s12 grid sub" id="o-pos"></div>
+        <details class="card s12 more-card">
+          <summary><h2 style="margin:0">Comment passer l'ordre dans MetaTrader 5</h2></summary>
           <ol class="steps">
             <li>Vers <b id="o-when">21 h 50</b> (heure de Paris), regarde le prix de <b>SPX500</b> et <b>NDX100</b> et entre-le ci-dessus : le verdict se met à jour.</li>
             <li>Pour acheter : double-clic sur le symbole → <b>Ordre au marché</b>, volume = nombre de lots indiqué → <b>Buy</b>.</li>
@@ -64,7 +67,7 @@
             <li>Note le trade dans le <b>Journal</b> avec le prix réellement obtenu.</li>
           </ol>
           <p class="muted">Raté l'heure ? Le CFD cote jusqu'à environ 23 h (heure de Paris) : passe l'ordre juste après la clôture, au prix le plus proche.</p>
-        </article>
+        </details>
       </div>
     </section>
 
