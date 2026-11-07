@@ -41,6 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
+  var VERSION = 'version du 07/11 23:23';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -359,40 +360,136 @@
       '<button class="btn ghost small" data-go="journal">Ouvrir le journal</button>';
   }
 
-  /* ce soir : une carte par indice (etape, consigne, prix MT5, comment faire, le trade en cours et son graphique) */
-  function renderOrdres() {
-    var cl = closeUTC(session), P = ['spx', 'ndx'].map(plan), nOpen = 0, tot = 0, todo = 0;
-    P.forEach(function (o) { if (o.trade && !o.trade.hit) { nOpen++; tot += o.trade.pnl; } if (o.tone !== 'idle') todo++; });
-    $('o-when').textContent = hm(cl - 600000);
-    $('o-intro').innerHTML = '<h2>' + cap(longDay(session)) + ' · décide vers ' + hm(cl - 600000) + '</h2><p class="muted" style="margin:0">La journée se termine à ' + hm(cl) + ' (heure de Paris) à New York. ' +
-      'Compte ' + usd(cfg.size) + ', ' + nf(cfg.lev, 1) + ' × par indice (' + usd(cfg.size * cfg.lev) + ' par trade)' + (cfg.phase == 3 ? ', stop obligatoire à ' + nf(stopPct() * 100, 1) + ' %.' : ', pas de stop pendant le challenge.') + '</p>' +
-      '<div class="sum-row"><div><span>Trades en cours</span><b>' + (nOpen || 'aucun') + '</b></div><div><span>Résultat en cours</span><b class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + (nOpen ? sUsd(tot) : '—') + '</b></div>' +
-      '<div><span>Ce soir</span><b>' + (todo ? todo + ' indice' + (todo > 1 ? 's' : '') + ' à surveiller' : 'rien à faire') + '</b></div></div>';
-    P.forEach(function (o, i) {
-      var k = o.k, I = o.I, tr = o.trade, el = $('o-' + k), html;
-      html = '<div class="head"><div><div class="name">' + I.name + '</div><div class="sym">' + I.sym + ' dans MT5</div></div></div>' + trackerHtml(o) + planHtml(o) + inputHtml(o) + howHtml(o);
-      if (tr) {
-        var last = I.days[I.days.length - 1], prog = Math.max(0, Math.min(1, (last - tr.d1) / Math.max(1, tr.deadline - tr.d1)));
-        html += '<h3 style="margin-top:18px">Ton trade' + (tr.real ? '' : ' (selon la règle, pas encore noté dans le Journal)') + '</h3>' +
-          '<div class="pl ' + (tr.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tr.pnl) + '<small>' + pct(tr.r) + '</small></div>' +
-          '<div class="src">' + nf(tr.lots, 2) + ' lots entrés le ' + longDay(tr.d1) + ' à ' + px(tr.p1) + ' · prix ' + (o.np ? esc(o.np.src) : 'd\'hier soir') + ' : ' + px(tr.cur) + '</div>' +
-          (tr.hit ? '' : '<div class="gauge"><div class="track"><div class="fill" style="width:' + prog * 100 + '%"></div></div><div class="labels"><span>Entré le <b>' + shortDay(tr.d1) + '</b></span><span>depuis <b>' + jours(last - tr.d1) + '</b></span><span>sortie au plus tard le <b>' + shortDay(tr.deadline) + '</b></span></div></div>') +
-          '<div class="stats"><div><span>Prix d\'entrée</span><b>' + px(tr.p1) + '</b></div><div><span>Prix actuel</span><b>' + px(tr.cur) + '</b></div>' +
-          '<div><span>Niveau de sortie ce soir</span><b>' + (tr.hit ? '—' : px(o.a.Y)) + '</b></div><div><span>Stop</span><b>' + (tr.stop ? px(tr.stop) : 'aucun') + '</b></div></div>' +
-          '<div class="chart" id="pos-ch-' + i + '"></div>';
-      }
-      el.className = 'card s12 posc'; el.innerHTML = html;
-      if (tr) {
-        var ei = I.days.findIndex(function (d) { return d >= tr.d1; }), from = Math.max(0, ei - 5), xs = I.days.slice(from), ys = I.c.slice(from), refs = [{ v: tr.p1, label: 'prix d\'entrée ' + px(tr.p1), cls: 'ref-buy' }];
-        var thr = xs.map(function (d, q) { var j = from + q; return j > ei ? (I.c[j - 1] + I.c[j - 2] + I.c[j - 3] + I.c[j - 4]) / 4 : NaN; });
-        var series = [{ name: 'Prix de fin de journée', v: ys, c: '--s1' }];
-        if (!tr.hit) { xs = xs.concat([session]); ys = ys.concat([NaN]); thr = thr.concat([o.a.Y]); series[0].v = ys; series.push({ name: 'Niveau de sortie du jour', v: thr, c: '--s2' }); }
-        if (tr.stop) refs.push({ v: tr.stop, label: 'stop ' + px(tr.stop), cls: 'ref-stop', zone: 'below' });
-        lineChart($('pos-ch-' + i), { x: xs, series: series, refs: refs, height: 190, label: I.name + ' depuis l\'entrée', fmt: function (v) { return nf(v, 0); },
-          note: (tr.hit ? '' : 'On sort le soir où le prix (bleu) finit au-dessus du niveau de sortie (orange). Ce niveau change chaque jour ; son dernier point est celui de ce soir.') + (tr.stop ? ' Zone rouge : le stop sort automatiquement.' : '') });
-      }
-    });
+  /* ---------- onglet Ordres : 3 listes (en attente, en cours, termines) et une fiche detaillee ---------- */
+  var otab = store.get('otab', 'cours'), sheetId = null;
+  var BUY = '<span class="side buy">BUY ↑</span>';
+
+  /* jauge : ou est le prix par rapport aux niveaux (entree, sortie, stop) */
+  function thermo(marks, cur, zone) {
+    var vs = marks.map(function (m) { return m.v; }).concat([cur]), lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs), pad = (hi - lo) * 0.18 || cur * 0.01;
+    lo -= pad; hi += pad;
+    var X = function (v) { return Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100)).toFixed(2) + '%'; };
+    var z = zone ? '<i class="zn ' + zone.cls + '" style="' + (zone.side === 'right' ? 'left:' + X(zone.v) + ';right:0' : 'left:0;width:' + X(zone.v)) + '"></i>' : '';
+    return '<div class="thermo"><div class="tc"><span class="now" style="left:' + X(cur) + '">maintenant<br><b>' + px(cur) + '</b></span></div>' +
+      '<div class="tt">' + z + marks.map(function (m) { return '<i class="tk ' + m.cls + '" style="left:' + X(m.v) + '"></i>'; }).join('') + '<b class="dot" style="left:' + X(cur) + '"></b></div>' +
+      '<div class="tl">' + marks.map(function (m) { return '<span class="' + m.cls + '" style="left:' + X(m.v) + '">' + m.label + '<br><b>' + px(m.v) + '</b></span>'; }).join('') + '</div>' +
+      (zone ? '<div class="tz ' + zone.cls + '">' + zone.label + '</div>' : '') + '</div>';
   }
+  var tile = function (l, v, cls) { return '<div><span>' + l + '</span><b class="' + (cls || '') + '">' + v + '</b></div>'; };
+  var chip = function (txt, cls) { return '<span class="chipx ' + cls + '">' + txt + '</span>'; };
+
+  /* trades termines : ceux du journal, puis ceux de la regle sur 12 mois */
+  function doneList() {
+    var out = [], pos = cfg.size * cfg.lev;
+    trades.filter(function (t) { return t.d2; }).forEach(function (t) {
+      out.push({ id: 'j:' + t.id, k: t.idx, e: dn(t.d1), x: dn(t.d2), pe: t.p1, px: t.p2, g: t.p2 / t.p1 - 1, usd: pnlOf(t), src: 'journal', lots: t.lots });
+    });
+    var last = IDX.spx.days[IDX.spx.days.length - 1];
+    legs(null).filter(function (t) { return !t.open && t.x >= last - 365; }).forEach(function (t) {
+      out.push({ id: 'r:' + t.k + ':' + t.e, k: t.k, e: t.e, x: t.x, pe: t.pe, px: t.px, g: t.gross, usd: pos * t.net, src: 'regle' });
+    });
+    return out.sort(function (a, b) { return b.x - a.x || b.e - a.e; });
+  }
+
+  function renderOrdres() {
+    var cl = closeUTC(session), P = ['spx', 'ndx'].map(plan);
+    var att = P.filter(function (o) { return !o.trade; }), cours = P.filter(function (o) { return o.trade && !o.trade.hit; }), done = doneList(), tot = 0;
+    cours.forEach(function (o) { tot += o.trade.pnl; });
+    $('o-when').textContent = hm(cl - 600000);
+    $('o-head').innerHTML = '<div class="oh"><div><h2 style="margin:0">' + cap(longDay(session)) + '</h2><p class="muted" style="margin:2px 0 0">Décision à <b>' + hm(cl - 600000) + '</b> · fin de journée ' + hm(cl) + '</p></div>' +
+      '<div class="oh-k"><span>En cours</span><b class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + (cours.length ? sUsd(tot) : '—') + '</b></div></div>';
+    var tabs = [['attente', 'En attente', att.length], ['cours', 'En cours', cours.length], ['termines', 'Terminés', done.length]];
+    $('o-seg').innerHTML = tabs.map(function (t) { return '<button role="tab" data-otab="' + t[0] + '" aria-selected="' + (otab === t[0]) + '">' + t[1] + ' <em>' + t[2] + '</em></button>'; }).join('');
+    var rows = '';
+    if (otab === 'attente') {
+      rows = att.map(function (o) {
+        var a = o.a, ok = o.tone === 'watch';
+        return '<button class="row" data-sheet="att:' + o.k + '">' + (ok ? BUY : '<span class="side none">—</span>') + '<span class="rm"><b>' + o.I.name + '</b><small>' +
+          (ok ? 'Entrée si prix &lt; ' + px(a.X) : (a.P <= a.F ? 'Sous la moyenne 200 j' : 'Baisse trop forte nécessaire')) + '</small></span>' +
+          '<span class="rr">' + (ok ? chip('Possible ce soir', 'watch') + '<small>' + pct(a.X / a.P - 1) + '</small>' : chip('Pas ce soir', 'idle')) + '</span><span class="chev">›</span></button>';
+      }).join('') || '<p class="empty">Les deux indices ont un trade en cours.</p>';
+    } else if (otab === 'cours') {
+      rows = cours.map(function (o) {
+        var tr = o.trade, last = o.I.days[o.I.days.length - 1], day = jours(last - tr.d1), st = o.tone === 'act' || o.step === 3 ? chip('Sortir ce soir', 'act') : chip('Garder', 'ok');
+        var prog = Math.max(0, Math.min(1, (last - tr.d1) / Math.max(1, tr.deadline - tr.d1)));
+        return '<button class="row" data-sheet="cours:' + o.k + '">' + BUY + '<span class="rm"><b>' + o.I.name + '</b><small>' + day + ' · max ' + shortDay(tr.deadline) + '</small><i class="mini"><i style="width:' + prog * 100 + '%"></i></i></span>' +
+          '<span class="rr"><b class="' + (tr.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tr.pnl) + '</b>' + st + '</span><span class="chev">›</span></button>';
+      }).join('') || '<p class="empty">Aucun trade en cours.</p>';
+    } else {
+      rows = done.slice(0, 40).map(function (t) {
+        return '<button class="row" data-sheet="done:' + t.id + '">' + BUY + '<span class="rm"><b>' + IDX[t.k].name + '</b><small>' + shortDay(t.e) + ' → ' + shortDay(t.x) + ' · ' + jours(t.x - t.e) + '</small></span>' +
+          '<span class="rr"><b class="' + (t.usd >= 0 ? 'pos' : 'neg') + '">' + sUsd(t.usd) + '</b>' + chip(t.src === 'journal' ? 'Mon trade' : 'Règle', t.src === 'journal' ? 'ok' : 'idle') + '</span><span class="chev">›</span></button>';
+      }).join('') || '<p class="empty">Aucun trade terminé.</p>';
+      if (done.length) rows = '<p class="muted" style="margin:0 2px 8px">« Règle » : trades calculés par la règle sur 12 mois, sur ton compte de ' + usd(cfg.size) + '. « Mon trade » : ceux notés dans ton journal.</p>' + rows;
+    }
+    $('o-list').innerHTML = rows;
+    if (sheetId) openSheet(sheetId, true);
+  }
+
+  /* fiche detaillee */
+  function inputBox(o) {
+    return '<label class="field"><span>Prix ' + o.I.sym + ' dans MT5</span><input type="number" inputmode="decimal" step="any" data-manual="' + o.k + '" value="' +
+      (manual[o.k] && manual[o.k].day === session ? manual[o.k].p : '') + '" placeholder="' + (o.np && o.np.auto ? px(o.np.p) : px(o.a.P)) + '"></label>';
+  }
+  function openSheet(id, refresh) {
+    var parts = id.split(':'), type = parts[0], html = '', chart = null, k, o;
+    if (type === 'att') {
+      o = plan(parts[1]); var a = o.a, cur = o.np ? o.np.p : a.P, ok = o.tone === 'watch';
+      var lt = lotsFor(o.k, ok ? (o.np ? o.np.p : a.X) : a.P), stop = (o.np ? o.np.p : a.X) * (1 - stopPct());
+      html = '<div class="sh-head">' + (ok ? BUY : '<span class="side none">—</span>') + '<div><h2>' + o.I.name + '</h2><small>' + o.I.sym + ' · en attente d\'une entrée</small></div></div>';
+      if (ok) {
+        var go = o.check ? o.check.cls === 'act' : null;
+        html += '<div class="big-state ' + (go ? 'act' : 'watch') + '">' + (go ? '✓ Entrer ce soir' : go === false ? '✋ Pas d\'entrée à ce prix' : '👀 Entrée possible ce soir') + '</div>' +
+          thermo([{ v: a.X, label: 'entrée', cls: 'k-in' }], cur, { side: 'left', v: a.X, cls: 'z-in', label: '← zone d\'entrée : prix de 22 h sous ' + px(a.X) }) +
+          '<div class="tiles">' + tile('Niveau d\'entrée', px(a.X)) + tile('Prix d\'hier soir', px(a.P)) + tile('Baisse nécessaire', pct(a.X / a.P - 1)) +
+          tile('Lots à acheter', nf(lt.lots, 2)) + tile('Montant', usd(lt.notional)) + tile('Stop', cfg.phase == 3 ? px(stop) : 'aucun') + '</div>' + inputBox(o) +
+          '<div class="act-line">' + BUY + ' MT5 → <b>' + o.I.sym + '</b> → Ordre au marché → <b>' + nf(lt.lots, 2) + ' lots</b> → <b>Buy</b></div>';
+      } else {
+        html += '<div class="big-state idle">Pas d\'entrée ce soir</div>' +
+          (a.P <= a.F
+            ? thermo([{ v: a.F, label: 'moyenne 200 j', cls: 'k-stop' }], a.P, { side: 'left', v: a.F, cls: 'z-no', label: '← sous la moyenne des 200 jours : la règle n\'entre pas' })
+            : thermo([{ v: a.X, label: 'entrée', cls: 'k-in' }, { v: a.F, label: 'moyenne 200 j', cls: 'k-stop' }], a.P, { side: 'left', v: a.F, cls: 'z-no', label: '← l\'entrée tomberait sous la moyenne 200 j : interdit' })) +
+          '<div class="tiles">' + tile('Prix d\'hier soir', px(a.P)) + (a.P > a.F ? tile('Niveau d\'entrée', px(a.X)) : '') + tile('Moyenne 200 jours', px(a.F)) + '</div>';
+      }
+      k = o.k; chart = { k: k, from: IDX[k].c.length - 60, refs: ok ? [{ v: a.X, label: 'entrée ' + px(a.X), cls: 'ref-buy', tail: true }] : [] };
+    } else if (type === 'cours') {
+      o = plan(parts[1]); var tr = o.trade, a2 = o.a, last = o.I.days[o.I.days.length - 1], prog = Math.max(0, Math.min(1, (last - tr.d1) / Math.max(1, tr.deadline - tr.d1)));
+      var exitNow = o.tone === 'act' || o.step === 3;
+      html = '<div class="sh-head">' + BUY + '<div><h2>' + o.I.name + '</h2><small>' + o.I.sym + ' · ' + nf(tr.lots, 2) + ' lots · ' + (tr.real ? 'noté au journal' : 'selon la règle') + '</small></div></div>' +
+        '<div class="sh-pl ' + (tr.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tr.pnl) + '<small>' + pct(tr.r) + '</small></div>' +
+        '<div class="big-state ' + (exitNow ? 'act' : 'ok') + '">' + (a2.forced ? '⏱ Dernier jour : sortir ce soir' : exitNow ? '✓ Sortir ce soir' : '✋ Garder le trade') + '</div>' +
+        thermo([{ v: tr.p1, label: 'entrée', cls: 'k-buy' }, { v: a2.Y, label: 'sortie', cls: 'k-out' }].concat(tr.stop ? [{ v: tr.stop, label: 'stop', cls: 'k-stop' }] : []), tr.cur,
+          { side: 'right', v: a2.Y, cls: 'z-out', label: 'zone de sortie : prix de 22 h au-dessus de ' + px(a2.Y) + ' →' }) +
+        '<div class="days"><div class="track"><div class="fill" style="width:' + prog * 100 + '%"></div></div><div class="labels"><span>entrée ' + shortDay(tr.d1) + '</span><span><b>' + jours(last - tr.d1) + '</b></span><span>sortie max ' + shortDay(tr.deadline) + '</span></div></div>' +
+        '<div class="tiles">' + tile('Prix d\'entrée', px(tr.p1)) + tile('Prix actuel', px(tr.cur)) + tile('Niveau de sortie', px(a2.Y)) +
+        tile('À faire pour sortir', a2.Y > tr.cur ? pct(a2.Y / tr.cur - 1) : 'atteint', a2.Y > tr.cur ? '' : 'pos') + tile('Lots', nf(tr.lots, 2)) + tile('Stop', tr.stop ? px(tr.stop) : 'aucun') + '</div>' +
+        inputBox(o) + (exitNow ? '<div class="act-line"><span class="side out">SORTIR</span> MT5 → onglet Trade → <b>croix ×</b> sur ' + o.I.sym + ' (pas « Sell »)</div>' : '');
+      k = o.k; var ei = IDX[k].days.findIndex(function (d) { return d >= tr.d1; });
+      chart = { k: k, from: Math.max(0, ei - 5), entry: ei, exitLine: true, refs: [{ v: tr.p1, label: 'entrée ' + px(tr.p1), cls: 'ref-buy' }].concat(tr.stop ? [{ v: tr.stop, label: 'stop', cls: 'ref-stop', zone: 'below' }] : []), y: a2.Y };
+    } else {
+      var t = doneList().filter(function (x) { return x.id === id.slice(5); })[0];
+      if (!t) { closeSheet(); return; }
+      k = t.k;
+      html = '<div class="sh-head">' + BUY + '<div><h2>' + IDX[k].name + '</h2><small>' + IDX[k].sym + ' · ' + (t.src === 'journal' ? 'mon trade (journal)' : 'trade de la règle') + '</small></div></div>' +
+        '<div class="sh-pl ' + (t.usd >= 0 ? 'pos' : 'neg') + '">' + sUsd(t.usd) + '<small>' + pct(t.g) + '</small></div>' +
+        '<div class="big-state ' + (t.usd >= 0 ? 'ok' : 'idle') + '">' + (t.usd >= 0 ? '✓ Trade gagnant' : '✗ Trade perdant') + '</div>' +
+        '<div class="tiles">' + tile('Entrée', shortDay(t.e) + ' · ' + px(t.pe)) + tile('Sortie', shortDay(t.x) + ' · ' + px(t.px)) + tile('Durée', jours(t.x - t.e)) +
+        tile('Variation', pct(t.g), t.g >= 0 ? 'pos' : 'neg') + tile('Résultat', sUsd(t.usd), t.usd >= 0 ? 'pos' : 'neg') + tile('Lots', t.lots ? nf(t.lots, 2) : nf(lotsFor(k, t.pe).lots, 2)) + '</div>' +
+        (t.src === 'regle' ? '<p class="muted">Calculé sur ton compte de ' + usd(cfg.size) + ' à ' + nf(cfg.lev, 1) + ' ×, frais estimés compris.</p>' : '');
+      var I = IDX[k], ie = I.days.findIndex(function (d) { return d >= t.e; }), ix = I.days.findIndex(function (d) { return d >= t.x; });
+      chart = { k: k, from: Math.max(0, ie - 5), to: Math.min(I.days.length, ix + 4), refs: [{ v: t.pe, label: 'entrée ' + px(t.pe), cls: 'ref-buy' }, { v: t.px, label: 'sortie ' + px(t.px), cls: 'ref-sell' }] };
+    }
+    $('sheet-body').innerHTML = html + '<h3 style="margin:16px 0 0">Graphique</h3><div class="chart" id="sheet-ch"></div>';
+    $('sheet').hidden = false; document.body.classList.add('noscroll'); sheetId = id;
+    if (!refresh) $('sheet').querySelector('.sheet').scrollTop = 0;
+    var I2 = IDX[chart.k], to = chart.to || I2.days.length, xs = I2.days.slice(chart.from, to), ys = I2.c.slice(chart.from, to), series = [{ name: 'Prix de fin de journée', v: ys, c: '--s1' }];
+    if (chart.exitLine) {
+      var thr = xs.map(function (d, q) { var j = chart.from + q; return j > chart.entry ? (I2.c[j - 1] + I2.c[j - 2] + I2.c[j - 3] + I2.c[j - 4]) / 4 : NaN; });
+      xs = xs.concat([session]); series[0].v = ys.concat([NaN]); series.push({ name: 'Niveau de sortie', v: thr.concat([chart.y]), c: '--s2' });
+    }
+    lineChart($('sheet-ch'), { x: xs, series: series, refs: chart.refs, height: 190, label: I2.name, fmt: function (v) { return nf(v, 0); } });
+  }
+  function closeSheet() { $('sheet').hidden = true; document.body.classList.remove('noscroll'); sheetId = null; }
 
   /* compte */
   function renderCompte() {
@@ -599,6 +696,7 @@
     if (VIEWS.indexOf(v) < 0) v = 'bord';
     VIEWS.forEach(function (k) { $('v-' + k).hidden = k !== v; });
     document.querySelectorAll('.nav button').forEach(function (b) { if (b.dataset.v === v) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
+    if (sheetId) closeSheet();
     $('title').textContent = $('v-' + v).dataset.title;
     store.set('tab', v); window.scrollTo(0, 0);
     if (A.spx) { if (v === 'bord') renderBord(); if (v === 'journal') renderJournal(); if (v === 'regle') renderBilan(); if (v === 'ordres') renderOrdres(); }
@@ -606,6 +704,9 @@
   document.querySelectorAll('.nav button').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.v); }); });
   document.addEventListener('click', function (ev) {
     var go = ev.target.closest('[data-go]'); if (go) { show(go.dataset.go); return; }
+    var ot = ev.target.closest('[data-otab]'); if (ot) { otab = ot.dataset.otab; store.set('otab', otab); renderOrdres(); return; }
+    var sh = ev.target.closest('[data-sheet]'); if (sh) { openSheet(sh.dataset.sheet); return; }
+    if (ev.target.closest('[data-close]')) { closeSheet(); return; }
     var ed = ev.target.closest('[data-edit]'); if (ed) { fillForm(trades.filter(function (t) { return t.id === ed.dataset.edit; })[0]); $('j-form-title').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
     var del = ev.target.closest('[data-del]');
     if (del && confirm('Supprimer ce trade du journal ?')) { trades = trades.filter(function (t) { return t.id !== del.dataset.del; }); store.set('trades', trades); renderAll(); }
@@ -614,10 +715,12 @@
     var k = ev.target.dataset && ev.target.dataset.manual; if (!k) return;
     var v = parseFloat(String(ev.target.value).replace(',', '.'));
     manual[k] = v > 0 ? { p: v, day: session } : null; store.set('manual', manual);
-    clearTimeout(ev.target._t); ev.target._t = setTimeout(function () { renderOrdres(); renderIdxCard(k); var el = document.querySelector('[data-manual="' + k + '"]'); if (el) { el.focus(); el.setSelectionRange && el.type === 'text' && el.setSelectionRange(99, 99); } }, 400);
+    clearTimeout(ev.target._t); ev.target._t = setTimeout(function () { renderOrdres(); renderIdxCard(k); var el = document.querySelector('#sheet [data-manual="' + k + '"]') || document.querySelector('[data-manual="' + k + '"]'); if (el) el.focus(); }, 500);
   });
 
   $('b-year').addEventListener('change', function () { store.set('year', +$('b-year').value); renderBilan(); });
+
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && sheetId) closeSheet(); });
 
   /* ---------- theme clair / sombre ---------- */
   function isDark() {
@@ -673,6 +776,7 @@
   });
 
   /* ---------- demarrage ---------- */
+  $('app-ver').textContent = 'Application Repli, ' + VERSION + '.';
   loadCfg(); fillForm(null); show(store.get('tab', 'bord'));
   var tr; window.addEventListener('resize', function () { clearTimeout(tr); tr = setTimeout(renderAll, 200); });
 

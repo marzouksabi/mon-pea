@@ -58,9 +58,9 @@
     <!-- ORDRES -->
     <section class="view" id="v-ordres" data-title="Ce soir" hidden>
       <div class="grid">
-        <article class="card s12 summary" id="o-intro"></article>
-        <article class="card s12" id="o-spx"></article>
-        <article class="card s12" id="o-ndx"></article>
+        <article class="card s12" id="o-head"></article>
+        <div class="s12 seg" id="o-seg" role="tablist"></div>
+        <div class="s12 list" id="o-list"></div>
         <details class="card s12 more-card">
           <summary><h2 style="margin:0">Comment faire dans MetaTrader 5</h2></summary>
           <ol class="steps">
@@ -120,6 +120,7 @@
             <div><b>Week-end</b><span>Positions de nuit et de week-end autorisées ; frais de nuit triplés le vendredi.</span></div>
           </div>
           <p class="muted">Règles relevées sur fundednext.com le 7 novembre 2026. Vérifie-les avant d'acheter.</p>
+          <p class="muted" id="app-ver"></p>
         </article>
       </div>
     </section>
@@ -218,6 +219,10 @@
       </div>
     </section>
   </main>
+</div>
+<div class="sheet-wrap" id="sheet" hidden>
+  <div class="sheet-bg" data-close></div>
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="Détail"><button class="sheet-x" data-close aria-label="Fermer">×</button><div id="sheet-body"></div></div>
 </div>
 <script src="app.js"></script>
 </body>

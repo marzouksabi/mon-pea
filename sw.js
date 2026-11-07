@@ -1,5 +1,5 @@
 /* Garde l'application disponible hors ligne. Les cours sont toujours redemandés en priorité au réseau. */
-var CACHE = 'mon-pea-v2';
+var CACHE = 'mon-pea-v3';
 var SHELL = ['./', 'index.html', 'app.css', 'app.js', 'manifest.webmanifest', 'icons/apple-touch-icon.png', 'icons/icon-192.png'];
 
 self.addEventListener('install', function (e) {
@@ -13,7 +13,9 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') return;
   // reseau d'abord, cache en secours : les cours et le code sont toujours les plus recents possibles
-  e.respondWith(fetch(e.request).then(function (res) {
+  // 'no-cache' : le navigateur revalide toujours aupres du serveur, l'iPhone ne garde donc pas une ancienne version
+  // (une page entiere se redemande par son adresse : une requete de navigation n'accepte pas d'options)
+  e.respondWith(fetch(e.request.mode === 'navigate' ? e.request.url : e.request, { cache: 'no-cache' }).then(function (res) {
     var copy = res.clone();
     caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
     return res;
