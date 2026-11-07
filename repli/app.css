@@ -263,3 +263,15 @@ b{font-weight:650}
 .how{border:1px dashed var(--line);border-radius:12px;padding:10px 12px;font-size:13.5px;color:var(--ink-2);margin-top:10px;line-height:1.5}
 .how b{color:var(--ink)}
 @media (max-width:420px){.tracker span{font-size:11px}}
+
+/* bouton de theme : soleil en mode sombre (passer en clair), lune en mode clair (passer en sombre) */
+.top-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+.theme-btn{flex:none;width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink-2);display:grid;place-items:center;cursor:pointer;
+  box-shadow:var(--shadow);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.theme-btn:hover{color:var(--accent)}
+.theme-btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.theme-btn .i-sun{display:none}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .theme-btn .i-sun{display:block}:root:not([data-theme="light"]) .theme-btn .i-moon{display:none}}
+:root[data-theme="dark"] .theme-btn .i-sun{display:block}
+:root[data-theme="dark"] .theme-btn .i-moon{display:none}
+@media (max-width:560px){.top{position:relative;padding-right:52px}.top-right{width:100%}.theme-btn{position:absolute;top:4px;right:0}}

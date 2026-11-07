@@ -619,6 +619,23 @@
 
   $('b-year').addEventListener('change', function () { store.set('year', +$('b-year').value); renderBilan(); });
 
+  /* ---------- theme clair / sombre ---------- */
+  function isDark() {
+    var t = document.documentElement.dataset.theme;
+    return t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function applyTheme() {
+    var dark = isDark();
+    $('theme-btn').setAttribute('aria-label', dark ? 'Passer en thème clair' : 'Passer en thème sombre');
+    $('theme-btn').title = dark ? 'Thème clair' : 'Thème sombre';
+    document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) { m.setAttribute('content', dark ? '#0b1211' : '#eaf3ef'); });
+  }
+  $('theme-btn').addEventListener('click', function () {
+    var next = isDark() ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next; store.set('theme', next); applyTheme();
+  });
+  applyTheme();
+
   /* ---------- reglages ---------- */
   function loadCfg() {
     $('c-size').value = String(cfg.size); $('c-lev').value = String(cfg.lev); $('c-phase').value = String(cfg.phase); $('c-start').value = cfg.start || '';
