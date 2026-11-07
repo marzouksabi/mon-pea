@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Repli">
+<meta name="theme-color" content="#eaf3ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1211" media="(prefers-color-scheme: dark)">
+<title>Repli</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="nav" aria-label="Navigation">
+    <div class="brand" aria-hidden="true"><img src="icons/icon-192.png" alt=""></div>
+    <button data-v="bord" aria-label="Accueil"><svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="8" rx="2"/><rect x="13.5" y="3.5" width="7" height="5" rx="2"/><rect x="3.5" y="14.5" width="7" height="6" rx="2"/><rect x="13.5" y="11.5" width="7" height="9" rx="2"/></svg><span>Accueil</span></button>
+    <button data-v="ordres" aria-label="Ordres"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/><path d="M16 15l2.5 2.5L22 13"/></svg><span>Ordres</span></button>
+    <button data-v="compte" aria-label="Compte"><svg viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="M3 10h18"/><path d="M7 15h4"/></svg><span>Compte</span></button>
+    <button data-v="journal" aria-label="Journal"><svg viewBox="0 0 24 24"><path d="M6 3.5h10.5a2 2 0 0 1 2 2V20.5H8a2 2 0 0 1-2-2z"/><path d="M6 18.5a2 2 0 0 1 2-2h10.5"/><path d="M9.5 8h5M9.5 11.5h5"/></svg><span>Journal</span></button>
+    <button data-v="regle" aria-label="Règle"><svg viewBox="0 0 24 24"><path d="M3.5 6l5.5 7 4-3.5 7.5 8"/><path d="M15.5 17.5h5v-5"/></svg><span>Règle</span></button>
+  </nav>
+
+  <main>
+    <header class="top">
+      <div>
+        <p class="eyebrow" id="today">—</p>
+        <h1 id="title">Accueil</h1>
+      </div>
+      <p class="stamp" id="stamp">Chargement des cours…</p>
+    </header>
+
+    <!-- ACCUEIL -->
+    <section class="view" id="v-bord" data-title="Accueil">
+      <div class="grid">
+        <article class="card hero s8" id="hero"></article>
+        <article class="card s4" id="clock"></article>
+        <article class="card s6 idx" id="idx-spx"></article>
+        <article class="card s6 idx" id="idx-ndx"></article>
+        <article class="card s4" id="mini-acct"></article>
+        <article class="card s4" id="mini-alerts"></article>
+        <article class="card s4" id="mini-journal"></article>
+      </div>
+    </section>
+
+    <!-- ORDRES -->
+    <section class="view" id="v-ordres" data-title="Ordres de ce soir" hidden>
+      <div class="grid">
+        <article class="card s12 note" id="o-intro"></article>
+        <article class="card s6" id="o-spx"></article>
+        <article class="card s6" id="o-ndx"></article>
+        <article class="card s12">
+          <h2>Comment passer l'ordre dans MetaTrader 5</h2>
+          <ol class="steps">
+            <li>Vers <b id="o-when">21 h 50</b> (heure de Paris), regarde le prix de <b>SPX500</b> et <b>NDX100</b> et entre-le ci-dessus : le verdict se met à jour.</li>
+            <li>Pour acheter : double-clic sur le symbole → <b>Ordre au marché</b>, volume = nombre de lots indiqué → <b>Buy</b>.</li>
+            <li>Compte financé seulement : clic droit sur la position → <b>Modifier</b> → <b>Stop Loss</b> au niveau indiqué (règle FundedNext des 3 %).</li>
+            <li>Pour vendre : clic droit sur la position → <b>Fermer</b>.</li>
+            <li>Note le trade dans le <b>Journal</b> avec le prix réellement obtenu.</li>
+          </ol>
+          <p class="muted">Raté l'heure ? Le CFD cote jusqu'à environ 23 h (heure de Paris) : passe l'ordre juste après la clôture, au prix le plus proche.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- COMPTE -->
+    <section class="view" id="v-compte" data-title="Mon compte FundedNext" hidden>
+      <div class="grid">
+        <article class="card s7" id="acct-status"></article>
+        <article class="card s5">
+          <h2>Réglages du compte</h2>
+          <label class="field"><span>Taille du compte</span><select id="c-size">
+            <option value="6000">6 000 $</option><option value="15000">15 000 $</option><option value="25000">25 000 $</option>
+            <option value="50000">50 000 $</option><option value="100000">100 000 $</option><option value="200000">200 000 $</option></select></label>
+          <label class="field"><span>Taille de position</span><select id="c-lev"><option value="0.5">0,5 × par indice (tranquille)</option><option value="1">1 × par indice</option></select></label>
+          <label class="field"><span>Étape</span><select id="c-phase"><option value="1">Phase 1 (+8 %)</option><option value="2">Phase 2 (+5 %)</option><option value="3">Compte financé</option></select></label>
+          <label class="field"><span>Début de l'étape</span><input id="c-start" type="date"></label>
+          <label class="field"><span>Solde actuel (MT5)</span><input id="c-bal" type="number" inputmode="decimal" placeholder="estimé d'après le journal"><em>$</em></label>
+          <details class="more">
+            <summary>Réglages avancés</summary>
+            <label class="field"><span>Unités d'indice par lot, SPX500</span><input id="c-ct-spx" type="number" inputmode="decimal" step="any"></label>
+            <label class="field"><span>Unités d'indice par lot, NDX100</span><input id="c-ct-ndx" type="number" inputmode="decimal" step="any"></label>
+            <label class="field"><span>Pas de volume (lots)</span><input id="c-step" type="number" inputmode="decimal" step="any"></label>
+            <p class="muted">À lire dans MT5 : clic droit sur le symbole → Spécification → « Taille du contrat » et « Pas du volume ».</p>
+          </details>
+        </article>
+        <article class="card s12">
+          <h2>Les règles du Stellar 2-Step</h2>
+          <div class="rules">
+            <div><b>Objectifs</b><span>+8 % (phase 1) puis +5 % (phase 2), au moins 5 jours de trading par phase, sans limite de temps.</span></div>
+            <div><b>Perte du jour</b><span>5 % du capital de départ, pertes en cours comprises, remise à zéro à minuit (heure du serveur).</span></div>
+            <div><b>Perte maximale</b><span>10 % du capital de départ, fixe.</span></div>
+            <div><b>Compte financé</b><span>Risque ≤ 3 % à tout moment : un stop sur chaque position. 1er paiement 21 jours après, puis tous les 14 jours, 80 %.</span></div>
+            <div><b>Inactivité</b><span>Compte désactivé après 60 jours sans trade.</span></div>
+            <div><b>Week-end</b><span>Positions de nuit et de week-end autorisées ; frais de nuit triplés le vendredi.</span></div>
+          </div>
+          <p class="muted">Règles relevées sur fundednext.com le 7 novembre 2026. Vérifie-les avant d'acheter.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- JOURNAL -->
+    <section class="view" id="v-journal" data-title="Journal de trades" hidden>
+      <div class="grid">
+        <article class="card s8">
+          <h2>Mes résultats</h2>
+          <div class="kpis" id="j-kpis"></div>
+          <div class="chart" id="j-chart"></div>
+        </article>
+        <article class="card s4">
+          <h2 id="j-form-title">Noter un trade</h2>
+          <input type="hidden" id="j-id">
+          <label class="field"><span>Indice</span><select id="j-idx"><option value="spx">S&amp;P 500 (SPX500)</option><option value="ndx">Nasdaq-100 (NDX100)</option></select></label>
+          <label class="field"><span>Type</span><select id="j-kind"><option value="regle">Trade de la règle</option><option value="entretien">Trade d'entretien</option></select></label>
+          <div class="pair">
+            <label class="field"><span>Achat le</span><input id="j-d1" type="date"></label>
+            <label class="field"><span>Prix</span><input id="j-p1" type="number" inputmode="decimal" step="any"></label>
+          </div>
+          <label class="field"><span>Lots</span><input id="j-lots" type="number" inputmode="decimal" step="any"></label>
+          <div class="pair">
+            <label class="field"><span>Vente le</span><input id="j-d2" type="date"></label>
+            <label class="field"><span>Prix</span><input id="j-p2" type="number" inputmode="decimal" step="any"></label>
+          </div>
+          <label class="field"><span>Frais de nuit et autres</span><input id="j-fee" type="number" inputmode="decimal" step="any" placeholder="0"><em>$</em></label>
+          <button class="btn" id="j-save">Enregistrer</button>
+          <button class="btn ghost" id="j-cancel" hidden>Annuler la modification</button>
+          <p class="muted">Laisse la vente vide tant que la position est ouverte.</p>
+        </article>
+        <article class="card s12">
+          <h2>Tous mes trades</h2>
+          <div class="table-wrap"><table class="tbl"><thead><tr><th>Indice</th><th>Achat</th><th>Vente</th><th>Lots</th><th>Résultat</th><th></th></tr></thead><tbody id="j-list"></tbody></table></div>
+          <div class="row-btns">
+            <button class="btn ghost small" id="j-export">Copier une sauvegarde</button>
+            <button class="btn ghost small" id="j-import">Restaurer une sauvegarde</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- REGLE -->
+    <section class="view" id="v-regle" data-title="La règle du repli" hidden>
+      <div class="grid">
+        <article class="card s6">
+          <h2>La règle, en 3 lignes</h2>
+          <ol class="steps">
+            <li><b>Acheter à la clôture</b> quand l'indice est au-dessus de sa moyenne des 200 dernières clôtures et que son RSI à 2 jours passe sous 10 (forte baisse sur 2 jours).</li>
+            <li><b>Revendre à la clôture</b> dès que l'indice clôture au-dessus de sa moyenne des 5 dernières clôtures, au plus tard à la 10e séance.</li>
+            <li>S&amp;P 500 et Nasdaq-100 séparément, une position à la fois par indice.</li>
+          </ol>
+        </article>
+        <article class="card s6">
+          <h2>Ce que disent les tests</h2>
+          <div class="facts">
+            <div><span>Trades gagnants</span><b>≈ 70 %</b></div>
+            <div><span>Gain moyen par trade depuis 2009</span><b>+0,37 %</b><small>+0,26 % avec le stop de 3 %</small></div>
+            <div><span>Trades par an et par indice</span><b>8 à 9</b></div>
+            <div><span>Comptes 50k payés (0,5 ×, sur 4 ans)</span><b>49 %</b><small>gain moyen +1 271 $ par compte</small></div>
+            <div><span>Départs janv. 2023 et 2024 (0,5 ×)</span><b>+4 163 $</b><small>sans compte cramé</small></div>
+            <div><span>Pire journée en séance (2026)</span><b>−6,5 %</b><small>9 juin et 5 novembre, les deux indices</small></div>
+          </div>
+          <p class="muted">Simulations sur l'historique 1991–2026 : le passé ne garantit rien. À confirmer en démo.</p>
+        </article>
+        <article class="card s12">
+          <h2>Trades de la règle sur 2 ans</h2>
+          <p class="muted">Calculés sur les clôtures, frais non déduits.</p>
+          <div class="kpis" id="r-kpis"></div>
+          <div class="table-wrap"><table class="tbl"><thead><tr><th>Indice</th><th>Achat</th><th>Vente</th><th>Séances</th><th>Résultat</th></tr></thead><tbody id="r-list"></tbody></table></div>
+        </article>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

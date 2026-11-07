@@ -6,6 +6,7 @@ on:
   schedule:
     - cron: '30 18 * * 1-5'   # chaque soir de semaine, après la clôture de Paris
     - cron: '40 21 * * 1-5'   # après la clôture de New York (indices du repli)
+    - cron: '*/15 19-21 * * 1-5'   # cours du moment autour de la clôture de New York (application Repli)
   workflow_dispatch:
 
 permissions:
@@ -29,8 +30,12 @@ jobs:
         with:
           python-version: '3.12'
       - name: Mettre à jour les cours
+        if: github.event.schedule != '*/15 19-21 * * 1-5'
         run: python scripts/update_data.py
+      - name: Relever les cours du moment
+        run: python scripts/update_live.py || true
       - name: Enregistrer les nouvelles données
+        if: github.event.schedule != '*/15 19-21 * * 1-5'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
