@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 08/11 13:12';
+  var VERSION = 'version du 08/11 13:30';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -459,13 +459,13 @@
       o = plan(parts[1]); var tr = o.trade, a2 = o.a, last = o.I.days[o.I.days.length - 1], prog = Math.max(0, Math.min(1, (last - tr.d1) / Math.max(1, tr.deadline - tr.d1)));
       var exitNow = o.tone === 'act' || o.step === 3;
       html = '<div class="sh-head">' + BUY + '<div><h2>' + o.I.name + '</h2><small>' + o.I.sym + ' · ' + nf(tr.lots, 2) + ' lots · ' + (tr.real ? 'noté au journal' : 'selon la règle') + '</small></div></div>' +
-        '<div class="sh-pl ' + (tr.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tr.pnl) + '<small>' + pct(tr.r) + '</small></div>' +
+        '<div class="sh-pl ' + (tr.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tr.pnl) + '<small>' + pct(tr.pnl / cfg.size) + ' du compte</small></div>' +
         '<div class="big-state ' + (exitNow ? 'act' : 'ok') + '">' + (a2.forced ? '⏱ Dernier jour : sortir ce soir' : exitNow ? '✓ Sortir ce soir' : '✋ Garder le trade') + '</div>' +
         thermo([{ v: tr.p1, label: 'entrée', cls: 'k-buy' }, { v: a2.Y, label: 'sortie', cls: 'k-out' }].concat(tr.stop ? [{ v: tr.stop, label: 'stop', cls: 'k-stop' }] : []), tr.cur,
           { side: 'right', v: a2.Y, cls: 'z-out', label: 'zone de sortie : prix de 22 h au-dessus de ' + px(a2.Y) + ' →' }) +
         '<div class="days"><div class="track"><div class="fill" style="width:' + prog * 100 + '%"></div></div><div class="labels"><span>entrée ' + shortDay(tr.d1) + '</span><span><b>' + jours(last - tr.d1) + '</b></span><span>sortie max ' + shortDay(tr.deadline) + '</span></div></div>' +
         '<div class="tiles">' + tile('Prix d\'entrée', px(tr.p1)) + tile('Prix actuel', px(tr.cur)) + tile('Niveau de sortie', px(a2.Y)) +
-        tile('À faire pour sortir', a2.Y > tr.cur ? pct(a2.Y / tr.cur - 1) : 'atteint', a2.Y > tr.cur ? '' : 'pos') + tile('Lots', nf(tr.lots, 2)) + tile('Stop', tr.stop ? px(tr.stop) : 'aucun') + tile('Valeur du trade', usd(tr.cur * tr.lots * (+cfg.ct[o.k] || 1))) +
+        tile('Variation de l\'indice', pct(tr.r), tr.r >= 0 ? 'pos' : 'neg') + tile('Hausse nécessaire pour sortir', a2.Y > tr.cur ? pct(a2.Y / tr.cur - 1) : 'atteinte', a2.Y > tr.cur ? '' : 'pos') + tile('Lots', nf(tr.lots, 2)) + tile('Stop', tr.stop ? px(tr.stop) : 'aucun') + tile('Valeur du trade', usd(tr.cur * tr.lots * (+cfg.ct[o.k] || 1))) +
           tile('Marge bloquée', margeTxt(tr.cur * tr.lots * (+cfg.ct[o.k] || 1))) + tile('Levier max', '1:' + levMax()) + '</div>' +
         inputBox(o) + (exitNow ? '<div class="act-line"><span class="side out">SORTIR</span> MT5 → onglet Trade → <b>croix ×</b> sur ' + o.I.sym + ' (pas « Sell »)</div>' : '');
       k = o.k; var ei = IDX[k].days.findIndex(function (d) { return d >= tr.d1; });
@@ -475,10 +475,10 @@
       if (!t) { closeSheet(); return; }
       k = t.k;
       html = '<div class="sh-head">' + BUY + '<div><h2>' + IDX[k].name + '</h2><small>' + IDX[k].sym + ' · ' + (t.src === 'journal' ? 'mon trade (journal)' : 'trade de la règle') + '</small></div></div>' +
-        '<div class="sh-pl ' + (t.usd >= 0 ? 'pos' : 'neg') + '">' + sUsd(t.usd) + '<small>' + pct(t.g) + '</small></div>' +
+        '<div class="sh-pl ' + (t.usd >= 0 ? 'pos' : 'neg') + '">' + sUsd(t.usd) + '<small>' + pct(t.usd / cfg.size) + ' du compte</small></div>' +
         '<div class="big-state ' + (t.usd >= 0 ? 'ok' : 'idle') + '">' + (t.usd >= 0 ? '✓ Trade gagnant' : '✗ Trade perdant') + '</div>' +
         '<div class="tiles">' + tile('Entrée', shortDay(t.e) + ' · ' + px(t.pe)) + tile('Sortie', shortDay(t.x) + ' · ' + px(t.px)) + tile('Durée', jours(t.x - t.e)) +
-        tile('Variation', pct(t.g), t.g >= 0 ? 'pos' : 'neg') + tile('Résultat', sUsd(t.usd), t.usd >= 0 ? 'pos' : 'neg') + tile('Lots', t.lots ? nf(t.lots, 2) : nf(lotsFor(k, t.pe).lots, 2)) + '</div>' +
+        tile('Variation de l\'indice', pct(t.g), t.g >= 0 ? 'pos' : 'neg') + tile('Résultat', sUsd(t.usd), t.usd >= 0 ? 'pos' : 'neg') + tile('Lots', t.lots ? nf(t.lots, 2) : nf(lotsFor(k, t.pe).lots, 2)) + '</div>' +
         (t.src === 'regle' ? '<p class="muted">Calculé sur ton compte de ' + usd(cfg.size) + ' à ' + nf(cfg.lev, 1) + ' ×, frais estimés compris.</p>' : '');
       var I = IDX[k], ie = I.days.findIndex(function (d) { return d >= t.e; }), ix = I.days.findIndex(function (d) { return d >= t.x; });
       chart = { k: k, from: Math.max(0, ie - 5), to: Math.min(I.days.length, ix + 4), refs: [{ v: t.pe, label: 'entrée ' + px(t.pe), cls: 'ref-buy' }, { v: t.px, label: 'sortie ' + px(t.px), cls: 'ref-sell' }] };
