@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 08/11 13:36';
+  var VERSION = 'version du 08/11 13:56';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -308,7 +308,7 @@
       : '<div class="stats"><div><span>Prix d\'hier soir</span><b>' + px(a.P) + '</b></div><div><span>Moyenne 200 jours</span><b>' + px(a.sma200) + '</b></div>' +
         '<div><span>Écart à la moyenne</span><b>' + pct(a.P / a.sma200 - 1) + '</b></div><div><span>Trade en cours</span><b>aucun</b></div></div>';
     $('idx-' + k).innerHTML = '<div class="head"><div><div class="name">' + I.name + '</div><div class="sym">' + I.sym + ' dans MT5</div></div></div>' +
-      trackerHtml(o) + planHtml(o) + (o.check ? '<div class="verdict ' + o.check.cls + '">' + esc(o.check.txt) + '<small>' + esc(o.check.sub) + ' Prix : ' + esc(o.np.src) + '.</small></div>' : '') + res +
+      trackerHtml(o) + decisionHtml(o) + res +
       '<div class="chart" id="ch-' + k + '"></div>';
     var from = Math.max(0, n - 130);
     lineChart($('ch-' + k), {
@@ -380,6 +380,44 @@
   var tile = function (l, v, cls) { return '<div><span>' + l + '</span><b class="' + (cls || '') + '">' + v + '</b></div>'; };
   var chip = function (txt, cls) { return '<span class="chipx ' + cls + '">' + txt + '</span>'; };
 
+
+  /* ---------- decision : une echelle de prix ou chaque zone est une action ---------- */
+  var VERBS = { SORTIR: ['🚪', 'Sortir', 'act'], GARDER: ['✋', 'Garder', 'ok'], STOP: ['⛔', 'Stop touché', 'act'], ENTRER: ['✅', 'Entrer', 'watch'], ATTENDRE: ['⏳', 'Attendre', 'idle'], INTERDIT: ['⛔', 'Attendre', 'idle'] };
+  function zonesFor(o) {
+    var a = o.a, tr = o.trade, Z = [], INF = Infinity;
+    if (tr && tr.hit) return { zones: [{ v: 'STOP', c: 'z-no', cond: 'le stop a fermé le trade le ' + shortDay(tr.hit), lo: -INF, hi: INF }], fixed: true };
+    if (tr) {
+      if (a.forced) return { zones: [{ v: 'SORTIR', c: 'z-out', cond: 'dernier jour : sortir à 22 h, quel que soit le prix', lo: -INF, hi: INF }], fixed: true };
+      Z.push({ v: 'SORTIR', c: 'z-out', cond: 'si le prix de 22 h finit au-dessus', lo: a.Y, hi: INF });
+      Z.push({ v: 'GARDER', c: 'z-hold', cond: 's\'il finit en dessous', lo: tr.stop || -INF, hi: a.Y });
+      if (tr.stop) Z.push({ v: 'STOP', c: 'z-no', cond: 'MT5 ferme le trade tout seul', lo: -INF, hi: tr.stop });
+    } else if (a.possible) {
+      Z.push({ v: 'ATTENDRE', c: 'z-hold', cond: 'si le prix de 22 h finit au-dessus', lo: a.X, hi: INF });
+      Z.push({ v: 'ENTRER', c: 'z-in', cond: 's\'il finit en dessous', lo: a.F, hi: a.X });
+      Z.push({ v: 'INTERDIT', c: 'z-no', cond: 'trop bas : sous la moyenne des 200 jours', lo: -INF, hi: a.F });
+    } else {
+      return { zones: [{ v: 'ATTENDRE', c: 'z-hold', cond: a.P <= a.F ? 'le prix est sous sa moyenne des 200 jours : la règle n\'entre pas' : 'il faudrait une baisse trop forte : pas d\'entrée ce soir', lo: -INF, hi: INF }], fixed: true };
+    }
+    return { zones: Z };
+  }
+  function ladder(o) {
+    var cur = o.np ? o.np.p : (o.trade ? o.trade.cur : o.a.P), src = o.np ? 'maintenant' : 'hier soir', zz = zonesFor(o), Z = zz.zones, on = 0;
+    Z.forEach(function (z, i) { if (cur >= z.lo && cur < z.hi) on = i; });
+    var html = '<div class="ladder">' + Z.map(function (z, i) {
+      return (i > 0 ? '<div class="lb"><span>' + px(Z[i - 1].lo) + '</span></div>' : '') +
+        '<div class="lz ' + z.c + (i === on ? ' on' : '') + '"><b class="verb">' + VERBS[z.v][1].toUpperCase() + '</b><span class="cond">' + esc(z.cond) + '</span>' +
+        (i === on && !zz.fixed ? '<span class="here">● ' + src + '<br><b>' + px(cur) + '</b></span>' : '') + '</div>';
+    }).join('') + '</div>';
+    return { verb: Z[on].v, fixed: !!zz.fixed, html: html };
+  }
+  function verbChip(o) { var v = VERBS[ladder(o).verb]; return chip(v[1], v[2]); }
+  function decisionHtml(o) {
+    var L = ladder(o), V = VERBS[L.verb], cl = closeUTC(session), now = Date.now(), dec = cl - 600000, today = session === parisToday();
+    var when = !today ? 'Décision ' + longDay(session) + ' à ' + hm(dec) : now < dec ? 'Décision ce soir à ' + hm(dec) + ' · peut encore changer d\'ici là' : now < cl ? 'C\'est le moment : décide avant ' + hm(cl) : 'Journée terminée';
+    if (L.fixed && L.verb !== 'SORTIR') when = today ? 'Ce soir' : cap(longDay(session));
+    return '<div class="decision ' + V[2] + '"><span class="dv">' + V[0] + ' ' + V[1].toUpperCase() + '</span><small>' + esc(when) + '</small></div>' + L.html;
+  }
+
   /* trades termines : ceux du journal, puis ceux de la regle sur 12 mois */
   function doneList() {
     var out = [], pos = cfg.size * cfg.lev;
@@ -408,11 +446,11 @@
         var a = o.a, ok = o.tone === 'watch';
         return '<button class="row" data-sheet="att:' + o.k + '">' + (ok ? BUY : '<span class="side none">—</span>') + '<span class="rm"><b>' + o.I.name + '</b><small>' +
           (ok ? 'Entrée si prix &lt; ' + px(a.X) : (a.P <= a.F ? 'Sous la moyenne 200 j' : 'Baisse trop forte nécessaire')) + '</small></span>' +
-          '<span class="rr">' + (ok ? chip('Possible ce soir', 'watch') + '<small>' + pct(a.X / a.P - 1) + '</small>' : chip('Pas ce soir', 'idle')) + '</span><span class="chev">›</span></button>';
+          '<span class="rr">' + verbChip(o) + (ok ? '<small>entrée si &lt; ' + px(a.X) + '</small>' : '') + '</span><span class="chev">›</span></button>';
       }).join('') || '<p class="empty">Les deux indices ont un trade en cours.</p>';
     } else if (otab === 'cours') {
       rows = cours.map(function (o) {
-        var tr = o.trade, last = o.I.days[o.I.days.length - 1], day = jours(last - tr.d1), st = o.tone === 'act' || o.step === 3 ? chip('Sortir ce soir', 'act') : chip('Garder', 'ok');
+        var tr = o.trade, last = o.I.days[o.I.days.length - 1], day = jours(last - tr.d1), st = verbChip(o);
         var prog = Math.max(0, Math.min(1, (last - tr.d1) / Math.max(1, tr.deadline - tr.d1)));
         return '<button class="row" data-sheet="cours:' + o.k + '">' + BUY + '<span class="rm"><b>' + o.I.name + '</b><small>' + day + ' · max ' + shortDay(tr.deadline) + '</small><i class="mini"><i style="width:' + prog * 100 + '%"></i></i></span>' +
           '<span class="rr"><b class="' + (tr.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tr.pnl) + '</b>' + st + '</span><span class="chev">›</span></button>';
@@ -440,18 +478,13 @@
       var lt = lotsFor(o.k, ok ? (o.np ? o.np.p : a.X) : a.P), stop = (o.np ? o.np.p : a.X) * (1 - stopPct());
       html = '<div class="sh-head">' + (ok ? BUY : '<span class="side none">—</span>') + '<div><h2>' + o.I.name + '</h2><small>' + o.I.sym + ' · en attente d\'une entrée</small></div></div>';
       if (ok) {
-        var go = o.check ? o.check.cls === 'act' : null;
-        html += '<div class="big-state ' + (go ? 'act' : 'watch') + '">' + (go ? '✓ Entrer ce soir' : go === false ? '✋ Pas d\'entrée à ce prix' : '👀 Entrée possible ce soir') + '</div>' +
-          thermo([{ v: a.X, label: 'entrée', cls: 'k-in' }], cur, { side: 'left', v: a.X, cls: 'z-in', label: '← zone d\'entrée : prix de 22 h sous ' + px(a.X) }) +
+        html += decisionHtml(o) +
           '<div class="tiles">' + tile('Niveau d\'entrée', px(a.X)) + tile('Prix d\'hier soir', px(a.P)) + tile('Baisse nécessaire', pct(a.X / a.P - 1)) +
           tile('Lots à acheter', nf(lt.lots, 2)) + tile('Montant', usd(lt.notional)) + tile('Stop', cfg.phase == 3 ? px(stop) : 'aucun') +
           tile('Marge bloquée', margeTxt(lt.notional)) + tile('Levier max', '1:' + levMax()) + tile('Les 2 indices', margeTxt(2 * cfg.size * cfg.lev)) + '</div>' + inputBox(o) +
           '<div class="act-line">' + BUY + ' MT5 → <b>' + o.I.sym + '</b> → Ordre au marché → <b>' + nf(lt.lots, 2) + ' lots</b> → <b>Buy</b></div>';
       } else {
-        html += '<div class="big-state idle">Pas d\'entrée ce soir</div>' +
-          (a.P <= a.F
-            ? thermo([{ v: a.F, label: 'moyenne 200 j', cls: 'k-stop' }], a.P, { side: 'left', v: a.F, cls: 'z-no', label: '← sous la moyenne des 200 jours : la règle n\'entre pas' })
-            : thermo([{ v: a.X, label: 'entrée', cls: 'k-in' }, { v: a.F, label: 'moyenne 200 j', cls: 'k-stop' }], a.P, { side: 'left', v: a.F, cls: 'z-no', label: '← l\'entrée tomberait sous la moyenne 200 j : interdit' })) +
+        html += decisionHtml(o) +
           '<div class="tiles">' + tile('Prix d\'hier soir', px(a.P)) + (a.P > a.F ? tile('Niveau d\'entrée', px(a.X)) : '') + tile('Moyenne 200 jours', px(a.F)) + '</div>';
       }
       k = o.k; chart = { k: k, from: IDX[k].c.length - 60, refs: ok ? [{ v: a.X, label: 'entrée ' + px(a.X), cls: 'ref-buy', tail: true }] : [] };
@@ -460,9 +493,7 @@
       var exitNow = o.tone === 'act' || o.step === 3;
       html = '<div class="sh-head">' + BUY + '<div><h2>' + o.I.name + '</h2><small>' + o.I.sym + ' · ' + nf(tr.lots, 2) + ' lots · ' + (tr.real ? 'noté au journal' : 'selon la règle') + '</small></div></div>' +
         '<div class="sh-pl ' + (tr.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tr.pnl) + '<small>' + pct(tr.pnl / cfg.size) + ' du compte</small></div>' +
-        '<div class="big-state ' + (exitNow ? 'act' : 'ok') + '">' + (a2.forced ? '⏱ Dernier jour : sortir ce soir' : exitNow ? '✓ Sortir ce soir' : '✋ Garder le trade') + '</div>' +
-        thermo([{ v: tr.p1, label: 'entrée', cls: 'k-buy' }, { v: a2.Y, label: 'sortie', cls: 'k-out' }].concat(tr.stop ? [{ v: tr.stop, label: 'stop', cls: 'k-stop' }] : []), tr.cur,
-          { side: 'right', v: a2.Y, cls: 'z-out', label: 'zone de sortie : prix de 22 h au-dessus de ' + px(a2.Y) + ' →' }) +
+        decisionHtml(o) +
         '<div class="days"><div class="track"><div class="fill" style="width:' + prog * 100 + '%"></div></div><div class="labels"><span>entrée ' + shortDay(tr.d1) + '</span><span><b>' + jours(last - tr.d1) + '</b></span><span>sortie max ' + shortDay(tr.deadline) + '</span></div></div>' +
         '<div class="tiles">' + tile('Prix d\'entrée', px(tr.p1)) + tile('Prix actuel', px(tr.cur)) + tile('Niveau de sortie', px(a2.Y)) +
         tile('Variation de l\'indice', pct(tr.r), tr.r >= 0 ? 'pos' : 'neg') + tile('Hausse nécessaire pour sortir', a2.Y > tr.cur ? pct(a2.Y / tr.cur - 1) : 'atteinte', a2.Y > tr.cur ? '' : 'pos') + tile('Lots', nf(tr.lots, 2)) + tile('Stop', tr.stop ? px(tr.stop) : 'aucun') + tile('Valeur du trade', usd(tr.cur * tr.lots * (+cfg.ct[o.k] || 1))) +

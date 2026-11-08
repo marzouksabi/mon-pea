@@ -339,3 +339,21 @@ body.noscroll{overflow:hidden}
 .field.col{flex-direction:column;align-items:stretch;padding:10px 12px}
 .field.col textarea{font:inherit;font-size:12px;color:var(--ink-2);background:transparent;border:0;outline:0;resize:none;width:100%;word-break:break-all}
 .btn:disabled{opacity:.5;cursor:default}
+
+/* bandeau de decision et echelle de prix */
+.decision{border-radius:16px;padding:14px 16px;margin:6px 0 10px}
+.decision .dv{display:block;font-size:24px;font-weight:820;letter-spacing:.01em}
+.decision small{display:block;font-size:13px;margin-top:2px;opacity:.85}
+.decision.ok{background:var(--good-soft);color:var(--good)} .decision.act{background:var(--warn-soft);color:var(--warn)}
+.decision.watch{background:var(--accent-soft);color:var(--accent)} .decision.idle{background:var(--field);color:var(--ink-2)}
+.ladder{border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:10px}
+.lz{display:flex;align-items:center;gap:12px;padding:13px 14px;opacity:.42}
+.lz.on{opacity:1;box-shadow:inset 4px 0 0 currentColor}
+.lz .verb{min-width:88px;font-size:15px;font-weight:820;letter-spacing:.03em}
+.lz .cond{flex:1;font-size:13px;color:var(--ink-2)}
+.lz .here{text-align:right;font-size:11.5px;color:var(--ink-2);line-height:1.25;white-space:nowrap}
+.lz .here b{font-size:15px;color:var(--s1)}
+.lz.z-out{background:var(--good-soft);color:var(--good)} .lz.z-hold{background:var(--field);color:var(--ink)}
+.lz.z-in{background:var(--accent-soft);color:var(--accent)} .lz.z-no{background:var(--crit-soft);color:var(--crit)}
+.lb{position:relative;height:0;border-top:2px dashed var(--line)}
+.lb span{position:absolute;right:12px;top:-10px;background:var(--card-solid);padding:0 6px;font-size:12px;font-weight:750;color:var(--ink);border-radius:6px;font-variant-numeric:tabular-nums}
