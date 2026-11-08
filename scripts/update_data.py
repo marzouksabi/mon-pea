@@ -64,15 +64,15 @@ def index_series(sym):
     j = json.loads(get(f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=5y'))['chart']['result'][0]
     ny = ZoneInfo('America/New_York')
     q = j['indicators']['quote'][0]
-    rows = [(dt.datetime.fromtimestamp(t, ny).date(), round(c, 2), round(min(lo or c, c), 2))
-            for t, c, lo in zip(j['timestamp'], q['close'], q['low']) if c]
+    rows = [(dt.datetime.fromtimestamp(t, ny).date(), round(c, 2), round(min(lo or c, c), 2), round(o or c, 2), round(max(hi or c, c, o or c), 2))
+            for t, c, lo, o, hi in zip(j['timestamp'], q['close'], q['low'], q['open'], q['high']) if c]
     now = dt.datetime.now(ny)
     if rows and rows[-1][0] == now.date() and (now.hour, now.minute) < (16, 30):
         rows.pop()
     if len(rows) < 300:
         raise ValueError('historique trop court')
     days = [(r[0] - dt.date(1970, 1, 1)).days for r in rows]
-    return {'d': [days[0]] + [days[i] - days[i - 1] for i in range(1, len(days))], 'c': [r[1] for r in rows], 'l': [r[2] for r in rows]}
+    return {'d': [days[0]] + [days[i] - days[i - 1] for i in range(1, len(days))], 'c': [r[1] for r in rows], 'l': [r[2] for r in rows], 'o': [r[3] for r in rows], 'h': [r[4] for r in rows]}
 
 
 def indices():

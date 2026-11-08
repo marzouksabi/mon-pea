@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 08/11 14:05';
+  var VERSION = 'version du 08/11 14:14';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -720,7 +720,7 @@
 
   function renderAll() {
     if (!A.spx) return;
-    renderBord(); renderOrdres(); renderCompte(); renderJournal(); renderBilan();
+    renderBord(); renderOrdres(); renderCompte(); renderJournal(); renderBilan(); if (!$('v-graph').hidden) renderGraph();
   }
 
   /* ---------- navigation ---------- */
@@ -786,6 +786,52 @@
 
   /* ---------- onglet Graphique : bougies en direct (TradingView, CFD OANDA) ---------- */
   var TV = { spx: 'OANDA:SPX500USD', ndx: 'OANDA:NAS100USD' }, gidx = store.get('gidx', 'ndx'), gint = store.get('gint', 'D'), gShown = '';
+  var gmode = store.get('gmode', 'trades');
+  function rgba(hex, al) { hex = hex.replace('#', ''); if (hex.length === 3) hex = hex.replace(/./g, '$&$&'); var n = parseInt(hex, 16); return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + al + ')'; }
+  function loadLW(cb, box) {
+    if (window.LightweightCharts) return cb();
+    var sc = document.createElement('script');
+    sc.src = 'https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js';
+    sc.onload = cb; sc.onerror = function () { box.innerHTML = '<p class="empty" style="padding:16px">Graphique indisponible : vérifie ta connexion.</p>'; gShown = ''; };
+    document.head.appendChild(sc);
+  }
+  /* bougies quotidiennes de l'indice + un dessin par trade (fleche LONG, rectangle entree -> sortie, fleche de sortie) */
+  function drawTrades(box) {
+    box.innerHTML = '';
+    var css = getComputedStyle(document.documentElement), col = function (n) { return css.getPropertyValue(n).trim(); };
+    var good = col('--good'), crit = col('--crit'), I = IDX[gidx], n = I.c.length, from = Math.max(0, n - 260), a = A[gidx];
+    var chart = LightweightCharts.createChart(box, {
+      autoSize: true, layout: { background: { type: 'solid', color: col('--card-solid') }, textColor: col('--ink-2'), fontSize: 11 },
+      grid: { vertLines: { color: col('--grid') }, horzLines: { color: col('--grid') } },
+      rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false },
+      localization: { locale: 'fr-FR', priceFormatter: function (p) { return nf(p, 0); } }
+    });
+    var candles = [];
+    for (var q = from; q < n; q++) candles.push({ time: ds(I.days[q]), open: I.o[q], high: I.h[q], low: I.l[q], close: I.c[q] });
+    var cs = chart.addCandlestickSeries({ upColor: good, downColor: crit, borderVisible: false, wickUpColor: good, wickDownColor: crit, priceLineVisible: false });
+    cs.setData(candles);
+    var markers = [];
+    legs(null).filter(function (t) { return t.k === gidx && t.e >= I.days[from]; }).forEach(function (t) {
+      var last = I.c[n - 1], val = t.open ? last : t.px, win = val >= t.pe, ie = I.days.indexOf(t.e), ix = t.open ? n - 1 : I.days.indexOf(t.x), data = [];
+      for (var q = ie; q <= ix; q++) data.push({ time: ds(I.days[q]), value: val });
+      var box2 = chart.addBaselineSeries({ baseValue: { type: 'price', price: t.pe }, topFillColor1: rgba(good, 0.28), topFillColor2: rgba(good, 0.28), bottomFillColor1: rgba(crit, 0.28), bottomFillColor2: rgba(crit, 0.28),
+        topLineColor: good, bottomLineColor: crit, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      box2.setData(data);
+      markers.push({ time: ds(t.e), position: 'belowBar', color: col('--s1'), shape: 'arrowUp', text: 'LONG' });
+      if (!t.open) markers.push({ time: ds(t.x), position: 'aboveBar', color: win ? good : crit, shape: 'arrowDown', text: pct(t.gross) });
+    });
+    markers.sort(function (x, y) { return x.time < y.time ? -1 : x.time > y.time ? 1 : 0; });
+    cs.setMarkers(markers);
+    if (a.mode === 'pos') {
+      cs.createPriceLine({ price: a.entry, color: col('--ink-3'), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'entrée' });
+      cs.createPriceLine({ price: a.Y, color: good, lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'sortie ce soir' });
+      if (cfg.phase == 3) cs.createPriceLine({ price: a.entry * (1 - stopPct()), color: crit, lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'stop' });
+    } else if (a.possible) {
+      cs.createPriceLine({ price: a.X, color: col('--accent'), lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'entrée ce soir' });
+    }
+    var span = box.clientWidth < 520 ? 50 : 90;
+    chart.timeScale().setVisibleLogicalRange({ from: candles.length - span, to: candles.length + 3 });
+  }
   function renderGraph(force) {
     document.querySelectorAll('[data-gidx]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.gidx === gidx); });
     document.querySelectorAll('[data-gint]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.gint === gint); });
@@ -796,10 +842,13 @@
       else lvl = 'Pas d\'entrée ce soir';
       $('g-status').innerHTML = '<div class="g-line">' + chip(V[0] + ' ' + V[1], V[2]) + '<span>' + lvl + '</span></div>';
     }
-    var key = gidx + gint + (isDark() ? 'd' : 'l');
+    document.querySelectorAll('[data-gmode]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.gmode === gmode); });
+    $('g-int').hidden = gmode !== 'live';
+    var key = gmode + gidx + gint + (isDark() ? 'd' : 'l');
     if (key === gShown && !force) return;
     gShown = key;
     var box = $('g-tv');
+    if (gmode === 'trades') { if (!A.spx) { gShown = ''; return; } box.innerHTML = ''; loadLW(function () { drawTrades(box); }, box); return; }
     box.innerHTML = '<div class="tradingview-widget-container" style="height:100%;width:100%"><div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div></div>';
     var sc = document.createElement('script');
     sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
@@ -812,6 +861,7 @@
   document.addEventListener('click', function (ev) {
     var b = ev.target.closest('[data-gidx]'); if (b) { gidx = b.dataset.gidx; store.set('gidx', gidx); renderGraph(); return; }
     b = ev.target.closest('[data-gint]'); if (b) { gint = b.dataset.gint; store.set('gint', gint); renderGraph(); }
+    b = ev.target.closest('[data-gmode]'); if (b) { gmode = b.dataset.gmode; store.set('gmode', gmode); renderGraph(); }
   });
 
   /* ---------- theme clair / sombre ---------- */
@@ -878,7 +928,7 @@
       fetch('../data/live.json', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
     ]).then(function (res) {
       var D = res[0]; LIVE = res[1];
-      Object.keys(IDX).forEach(function (k) { var d = 0; IDX[k].c = D.idx[k].c; IDX[k].l = D.idx[k].l || D.idx[k].c; IDX[k].days = D.idx[k].d.map(function (x) { d += x; return d; }); A[k] = analyze(k); });
+      Object.keys(IDX).forEach(function (k) { var d = 0; IDX[k].c = D.idx[k].c; IDX[k].l = D.idx[k].l || D.idx[k].c; IDX[k].o = D.idx[k].o || D.idx[k].c; IDX[k].h = D.idx[k].h || D.idx[k].c; IDX[k].days = D.idx[k].d.map(function (x) { d += x; return d; }); A[k] = analyze(k); });
       var lu = LIVE && LIVE.updated ? ' · relevé auto ' + hm(Date.parse(LIVE.updated)) : '';
       $('stamp').textContent = 'Clôtures au ' + shortDay(Math.max(A.spx.last, A.ndx.last)) + ' ' + new Date(A.spx.last * DAY).getUTCFullYear() + lu;
       renderAll();

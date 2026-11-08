@@ -376,3 +376,5 @@ body.noscroll{overflow:hidden}
 .g-line{margin:8px 2px 0;font-size:13px;gap:8px}
 .tv{margin-top:8px;height:calc(100dvh - 300px);min-height:380px}
 @media (min-width:900px){.tv{height:calc(100dvh - 240px)}}
+
+.g-top{flex-wrap:wrap}
