@@ -118,7 +118,7 @@ def main():
     for s in subs:
         try:
             webpush(subscription_info=s, data=json.dumps(payload, ensure_ascii=False), vapid_private_key=key,
-                    vapid_claims={'sub': 'https://marzouksabi.github.io/mon-pea/'}, ttl=3600)
+                    vapid_claims={'sub': 'https://marzouksabi.github.io'}, ttl=3600)
             print('envoyée :', s['endpoint'][:40] + '…')
         except WebPushException as e:
             print('échec :', e)
