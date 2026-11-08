@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 08/11 13:56';
+  var VERSION = 'version du 08/11 14:00';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -726,7 +726,7 @@
   }
 
   /* ---------- navigation ---------- */
-  var VIEWS = ['bord', 'ordres', 'compte', 'journal', 'regle'];
+  var VIEWS = ['bord', 'ordres', 'graph', 'compte', 'journal', 'regle'];
   function show(v) {
     if (VIEWS.indexOf(v) < 0) v = 'bord';
     VIEWS.forEach(function (k) { $('v-' + k).hidden = k !== v; });
@@ -734,7 +734,7 @@
     if (sheetId) closeSheet();
     $('title').textContent = $('v-' + v).dataset.title;
     store.set('tab', v); window.scrollTo(0, 0);
-    if (A.spx) { if (v === 'bord') renderBord(); if (v === 'journal') renderJournal(); if (v === 'regle') renderBilan(); if (v === 'ordres') renderOrdres(); }
+    if (A.spx) { if (v === 'bord') renderBord(); if (v === 'journal') renderJournal(); if (v === 'regle') renderBilan(); if (v === 'ordres') renderOrdres(); if (v === 'graph') renderGraph(); }
   }
   document.querySelectorAll('.nav button').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.v); }); });
   document.addEventListener('click', function (ev) {
@@ -785,6 +785,37 @@
       function () { $('n-sub').select(); nStatus('Sélectionne le code et copie-le.'); });
   });
 
+
+  /* ---------- onglet Graphique : bougies en direct (TradingView, CFD OANDA) ---------- */
+  var TV = { spx: 'OANDA:SPX500USD', ndx: 'OANDA:NAS100USD' }, gidx = store.get('gidx', 'ndx'), gint = store.get('gint', 'D'), gShown = '';
+  function renderGraph(force) {
+    document.querySelectorAll('[data-gidx]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.gidx === gidx); });
+    document.querySelectorAll('[data-gint]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.gint === gint); });
+    if (A.spx) {
+      var o = plan(gidx), a = o.a, V = VERBS[ladder(o).verb], lvl;
+      if (o.trade && !o.trade.hit) lvl = a.forced ? 'Dernier jour : sortir à 22 h' : 'Trade en cours · sortir si le prix de 22 h dépasse <b>' + px(a.Y) + '</b>';
+      else if (!o.trade && a.possible) lvl = 'Entrer si le prix de 22 h est sous <b>' + px(a.X) + '</b>';
+      else lvl = 'Pas d\'entrée possible ce soir';
+      $('g-status').innerHTML = '<div class="g-line">' + chip(V[0] + ' ' + V[1], V[2]) + '<span>' + lvl + '</span><span>· hier soir <b>' + px(a.P) + '</b></span></div>';
+    }
+    var key = gidx + gint + (isDark() ? 'd' : 'l');
+    if (key === gShown && !force) return;
+    gShown = key;
+    var box = $('g-tv');
+    box.innerHTML = '<div class="tradingview-widget-container" style="height:100%;width:100%"><div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div></div>';
+    var sc = document.createElement('script');
+    sc.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+    sc.async = true;
+    sc.text = JSON.stringify({ autosize: true, symbol: TV[gidx], interval: gint, timezone: 'Europe/Paris', theme: isDark() ? 'dark' : 'light', style: '1', locale: 'fr',
+      allow_symbol_change: false, hide_side_toolbar: true, hide_volume: true, save_image: false, calendar: false, support_host: 'https://www.tradingview.com' });
+    sc.onerror = function () { box.innerHTML = '<p class="empty" style="padding:16px">Graphique indisponible : vérifie ta connexion.</p>'; gShown = ''; };
+    box.firstChild.appendChild(sc);
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-gidx]'); if (b) { gidx = b.dataset.gidx; store.set('gidx', gidx); renderGraph(); return; }
+    b = ev.target.closest('[data-gint]'); if (b) { gint = b.dataset.gint; store.set('gint', gint); renderGraph(); }
+  });
+
   /* ---------- theme clair / sombre ---------- */
   function isDark() {
     var t = document.documentElement.dataset.theme;
@@ -798,7 +829,7 @@
   }
   $('theme-btn').addEventListener('click', function () {
     var next = isDark() ? 'light' : 'dark';
-    document.documentElement.dataset.theme = next; store.set('theme', next); applyTheme();
+    document.documentElement.dataset.theme = next; store.set('theme', next); applyTheme(); if (!$('v-graph').hidden) renderGraph(true);
   });
   applyTheme();
 
