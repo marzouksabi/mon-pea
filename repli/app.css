@@ -367,3 +367,12 @@ body.noscroll{overflow:hidden}
 .g-line b{color:var(--ink)}
 .tv{height:62vh;min-height:360px;border-radius:14px;overflow:hidden;border:1px solid var(--line);margin-top:12px;background:var(--card-solid)}
 @media (max-width:420px){.nav button{font-size:10px}.nav svg{width:22px;height:22px}}
+
+/* onglet Graphique compact : commandes sur une ligne, graphique sur toute la hauteur disponible */
+.g-card{padding:10px}
+.g-top{flex-wrap:nowrap;gap:6px}
+.g-seg{padding:3px}
+.g-seg button{padding:7px 9px;font-size:12.5px}
+.g-line{margin:8px 2px 0;font-size:13px;gap:8px}
+.tv{margin-top:8px;height:calc(100dvh - 300px);min-height:380px}
+@media (min-width:900px){.tv{height:calc(100dvh - 240px)}}

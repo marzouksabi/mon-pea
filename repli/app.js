@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 08/11 14:00';
+  var VERSION = 'version du 08/11 14:05';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -315,8 +315,6 @@
       x: I.days.slice(from), height: 160, label: I.name + ' sur 6 mois',
       series: [{ name: 'Prix du ' + I.name, v: I.c.slice(from), c: '--s1' }, { name: 'Moyenne des 200 derniers jours', v: a.st.sma200.slice(from), c: '--s2' }],
       refs: a.mode === 'pos' ? [{ v: a.Y, label: px(a.Y), cls: 'ref-sell', tail: true }] : (a.possible ? [{ v: a.X, label: px(a.X), cls: 'ref-buy', tail: true }] : []),
-      note: (a.mode === 'pos' ? 'Trait vert à droite : niveau de sortie de ce soir (' + px(a.Y) + '). ' : (a.possible ? 'Trait gris à droite : niveau d\'entrée de ce soir (' + px(a.X) + '). ' : '')) +
-        'La règle ne cherche des entrées que quand le prix est au-dessus de la courbe orange.',
       fmt: function (v) { return nf(v, 0); }
     });
   }
@@ -793,10 +791,10 @@
     document.querySelectorAll('[data-gint]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.gint === gint); });
     if (A.spx) {
       var o = plan(gidx), a = o.a, V = VERBS[ladder(o).verb], lvl;
-      if (o.trade && !o.trade.hit) lvl = a.forced ? 'Dernier jour : sortir à 22 h' : 'Trade en cours · sortir si le prix de 22 h dépasse <b>' + px(a.Y) + '</b>';
-      else if (!o.trade && a.possible) lvl = 'Entrer si le prix de 22 h est sous <b>' + px(a.X) + '</b>';
-      else lvl = 'Pas d\'entrée possible ce soir';
-      $('g-status').innerHTML = '<div class="g-line">' + chip(V[0] + ' ' + V[1], V[2]) + '<span>' + lvl + '</span><span>· hier soir <b>' + px(a.P) + '</b></span></div>';
+      if (o.trade && !o.trade.hit) lvl = a.forced ? 'Dernier jour : sortir à 22 h' : 'Sortie si &gt; <b>' + px(a.Y) + '</b> à 22 h';
+      else if (!o.trade && a.possible) lvl = 'Entrée si &lt; <b>' + px(a.X) + '</b> à 22 h';
+      else lvl = 'Pas d\'entrée ce soir';
+      $('g-status').innerHTML = '<div class="g-line">' + chip(V[0] + ' ' + V[1], V[2]) + '<span>' + lvl + '</span></div>';
     }
     var key = gidx + gint + (isDark() ? 'd' : 'l');
     if (key === gShown && !force) return;
