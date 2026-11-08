@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 08/11 14:29';
+  var VERSION = 'version du 08/11 14:32';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -799,11 +799,12 @@
   function drawTrades(box) {
     box.innerHTML = '';
     var css = getComputedStyle(document.documentElement), col = function (n) { return css.getPropertyValue(n).trim(); };
-    var good = col('--good'), crit = col('--crit'), I = IDX[gidx], n = I.c.length, from = Math.max(0, n - 260), a = A[gidx];
+    var good = '#089981', crit = '#f23645', I = IDX[gidx], n = I.c.length, from = Math.max(0, n - 260), a = A[gidx];
     var chart = LightweightCharts.createChart(box, {
       autoSize: true, layout: { background: { type: 'solid', color: col('--card-solid') }, textColor: col('--ink-2'), fontSize: 11 },
       grid: { vertLines: { color: col('--grid') }, horzLines: { color: col('--grid') } },
-      rightPriceScale: { borderVisible: false }, timeScale: { borderVisible: false },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.08 } }, timeScale: { borderVisible: false, barSpacing: 9, rightOffset: 3 },
+      crosshair: { mode: 0 },
       localization: { locale: 'fr-FR', priceFormatter: function (p) { return nf(p, 0); } }
     });
     var candles = [];
@@ -818,7 +819,8 @@
       markers.push({ time: ds(t.e), position: 'belowBar', color: col('--s1'), shape: 'arrowUp', text: 'LONG' });
       if (!t.open) markers.push({ time: ds(t.x), position: 'aboveBar', color: win ? good : crit, shape: 'arrowDown', text: pct(t.gross) });
     });
-    var cs = chart.addCandlestickSeries({ upColor: good, downColor: crit, borderUpColor: good, borderDownColor: crit, wickUpColor: good, wickDownColor: crit, priceLineVisible: false });
+    var TVG = '#089981', TVR = '#f23645';
+    var cs = chart.addCandlestickSeries({ upColor: TVG, downColor: TVR, borderUpColor: TVG, borderDownColor: TVR, wickUpColor: TVG, wickDownColor: TVR, priceLineVisible: false });
     cs.setData(candles);
     markers.sort(function (x, y) { return x.time < y.time ? -1 : x.time > y.time ? 1 : 0; });
     cs.setMarkers(markers);
