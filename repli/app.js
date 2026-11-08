@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 08/11 14:14';
+  var VERSION = 'version du 08/11 14:29';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -808,18 +808,18 @@
     });
     var candles = [];
     for (var q = from; q < n; q++) candles.push({ time: ds(I.days[q]), open: I.o[q], high: I.h[q], low: I.l[q], close: I.c[q] });
-    var cs = chart.addCandlestickSeries({ upColor: good, downColor: crit, borderVisible: false, wickUpColor: good, wickDownColor: crit, priceLineVisible: false });
-    cs.setData(candles);
     var markers = [];
     legs(null).filter(function (t) { return t.k === gidx && t.e >= I.days[from]; }).forEach(function (t) {
       var last = I.c[n - 1], val = t.open ? last : t.px, win = val >= t.pe, ie = I.days.indexOf(t.e), ix = t.open ? n - 1 : I.days.indexOf(t.x), data = [];
       for (var q = ie; q <= ix; q++) data.push({ time: ds(I.days[q]), value: val });
       var box2 = chart.addBaselineSeries({ baseValue: { type: 'price', price: t.pe }, topFillColor1: rgba(good, 0.28), topFillColor2: rgba(good, 0.28), bottomFillColor1: rgba(crit, 0.28), bottomFillColor2: rgba(crit, 0.28),
-        topLineColor: good, bottomLineColor: crit, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+        topLineColor: 'rgba(0,0,0,0)', bottomLineColor: 'rgba(0,0,0,0)', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
       box2.setData(data);
       markers.push({ time: ds(t.e), position: 'belowBar', color: col('--s1'), shape: 'arrowUp', text: 'LONG' });
       if (!t.open) markers.push({ time: ds(t.x), position: 'aboveBar', color: win ? good : crit, shape: 'arrowDown', text: pct(t.gross) });
     });
+    var cs = chart.addCandlestickSeries({ upColor: good, downColor: crit, borderUpColor: good, borderDownColor: crit, wickUpColor: good, wickDownColor: crit, priceLineVisible: false });
+    cs.setData(candles);
     markers.sort(function (x, y) { return x.time < y.time ? -1 : x.time > y.time ? 1 : 0; });
     cs.setMarkers(markers);
     if (a.mode === 'pos') {
