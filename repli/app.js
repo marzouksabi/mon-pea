@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 07/11 23:31';
+  var VERSION = 'version du 08/11 13:12';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -725,6 +725,34 @@
   $('b-year').addEventListener('change', function () { store.set('year', +$('b-year').value); renderBilan(); });
 
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && sheetId) closeSheet(); });
+
+  /* ---------- notifications (Web Push) ---------- */
+  var VAPID_PUBLIC = 'BFmwNDj1FMgi5tM-exLZt8N3Pcx7ZsaHuzQvqVaLdN6NhjPLTTEXDIRk7Q6-XSgzjpiUnaeKSpKfSHeRQyy_ue8';
+  function b64u(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+  function nStatus(m) { $('n-status').textContent = m; }
+  function showSub(sub) { $('n-sub').value = JSON.stringify(sub); $('n-code').hidden = false; }
+  (function initNotif() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      nStatus('Sur iPhone : ouvre Repli depuis son icône sur l\'écran d\'accueil (iOS 16.4 ou plus récent).'); $('n-on').disabled = true; return;
+    }
+    navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+      if (sub && Notification.permission === 'granted') { nStatus('Notifications activées sur cet appareil.'); showSub(sub); $('n-on').textContent = 'Réafficher le code'; }
+    }).catch(function () { /* pas de service worker actif */ });
+  })();
+  $('n-on').addEventListener('click', function () {
+    Notification.requestPermission().then(function (p) {
+      if (p !== 'granted') { nStatus('Autorisation refusée. Pour la rétablir : Réglages de l\'iPhone → Notifications → Repli.'); throw 0; }
+      return navigator.serviceWorker.ready;
+    }).then(function (reg) {
+      return reg.pushManager.getSubscription().then(function (s) { return s || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID_PUBLIC) }); });
+    }).then(function (sub) { nStatus('Activé. Copie le code ci-dessous et envoie-le-moi pour terminer le réglage.'); showSub(sub); $('n-on').textContent = 'Réafficher le code'; })
+      .catch(function (e) { if (e !== 0) nStatus('Impossible d\'activer les notifications : ' + ((e && e.message) || e)); });
+  });
+  $('n-copy').addEventListener('click', function () {
+    var txt = $('n-sub').value;
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function () { nStatus('Code copié. Colle-le dans la conversation.'); },
+      function () { $('n-sub').select(); nStatus('Sélectionne le code et copie-le.'); });
+  });
 
   /* ---------- theme clair / sombre ---------- */
   function isDark() {

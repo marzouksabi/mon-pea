@@ -1,0 +1,32 @@
+name: Notification du soir (Repli)
+
+on:
+  schedule:
+    # Plusieurs passages : le script n'envoie que dans la fenêtre de 15 h 20 à 16 h à New York
+    # (heure d'été comme d'hiver, et 12 h 20 – 13 h les jours de fermeture anticipée).
+    - cron: '30 16,17,19,20 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Envoyer maintenant une notification de test (oui/non)"
+        default: 'oui'
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Installer l'envoi de notifications
+        run: pip install "pywebpush>=1.14,<3"
+      - name: Envoyer la notification
+        run: python scripts/notify.py
+        env:
+          VAPID_PRIVATE: ${{ secrets.VAPID_PRIVATE }}
+          PUSH_SUBS: ${{ secrets.PUSH_SUBS }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.test || '' }}

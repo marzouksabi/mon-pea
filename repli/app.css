@@ -335,3 +335,7 @@ body.noscroll{overflow:hidden}
 .thermo .zn.z-no{background:var(--crit-soft);border:1px solid var(--crit)} .thermo .tz.z-no{color:var(--crit)}
 .thermo .tl .k-in b{color:var(--accent)}
 .oh-k b{white-space:nowrap}
+
+.field.col{flex-direction:column;align-items:stretch;padding:10px 12px}
+.field.col textarea{font:inherit;font-size:12px;color:var(--ink-2);background:transparent;border:0;outline:0;resize:none;width:100%;word-break:break-all}
+.btn:disabled{opacity:.5;cursor:default}

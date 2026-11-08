@@ -109,6 +109,16 @@
             <p class="muted">À lire dans MT5 : clic droit sur le symbole → Spécification → « Taille du contrat » et « Pas du volume ».</p>
           </details>
         </article>
+        <article class="card s12" id="notif-card">
+          <h2>Notifications du soir</h2>
+          <p class="muted" style="margin:0 0 10px">Vers 21 h 30 (heure de Paris), une notification te dit quoi faire, seulement les soirs où un indice est à surveiller.</p>
+          <button class="btn" id="n-on" style="max-width:340px">Activer les notifications</button>
+          <p class="muted" id="n-status"></p>
+          <div id="n-code" hidden>
+            <label class="field col"><textarea id="n-sub" rows="4" readonly></textarea></label>
+            <button class="btn ghost small" id="n-copy">Copier le code</button>
+          </div>
+        </article>
         <article class="card s12">
           <h2>Les règles du Stellar 2-Step</h2>
           <div class="rules">
