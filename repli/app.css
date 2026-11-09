@@ -418,3 +418,71 @@ body.noscroll{overflow:hidden}
 .rg-top{position:relative;height:18px;font-size:11.5px;font-weight:800}
 .rg-top .rg-10{position:absolute;left:10%;transform:translateX(-30%);color:var(--good);top:0}
 .rg-top .rg-v{position:absolute;transform:translateX(-50%);color:var(--s1);top:0}
+
+/* ---------- Ce soir : l'ecran du verdict ---------- */
+.vh{padding:18px 18px 14px}
+.vh-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.vh-day{font-size:13px;font-weight:700;color:var(--ink-2)}
+.vh-ph{font-size:12px;font-weight:750;padding:4px 10px;border-radius:999px;background:var(--field);color:var(--ink-2);white-space:nowrap}
+.vh-ph.live{background:var(--warn-soft);color:var(--warn)}
+.vh-ph.live::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px;animation:vpulse 1.4s ease-in-out infinite}
+.vh-ph.done{background:var(--good-soft);color:var(--good)}
+@keyframes vpulse{50%{opacity:.25}}
+.vh-big{font-size:34px;font-weight:820;letter-spacing:-.015em;line-height:1.1;margin:8px 0 4px;font-variant-numeric:tabular-nums}
+.vh-sub{font-size:14.5px;color:var(--ink-2)}
+.tl{position:relative;height:50px;margin:18px 10px 2px}
+.tl-track,.tl-fill{position:absolute;left:0;top:6px;height:4px;border-radius:4px}
+.tl-track{right:0;background:var(--field)}
+.tl-fill{background:var(--accent)}
+.tl-pt{position:absolute;top:0;transform:translateX(-50%);text-align:center;font-size:11.5px;color:var(--ink-3);white-space:nowrap;line-height:1.25;font-variant-numeric:tabular-nums}
+.tl-pt i{display:block;width:16px;height:16px;border-radius:50%;margin:0 auto 4px;background:var(--card-solid);border:3px solid var(--line)}
+.tl-pt b{display:block;font-weight:650}
+.tl-pt:first-of-type{transform:translateX(-8px);text-align:left}.tl-pt:first-of-type i{margin-left:0}
+.tl-pt:last-of-type{transform:translateX(calc(-100% + 8px));text-align:right}.tl-pt:last-of-type i{margin-right:0}
+.tl-pt.past i{border-color:var(--accent);background:var(--accent)}
+.tl-pt.cur{color:var(--ink)}
+.tl-pt.cur i{border-color:var(--warn);background:var(--warn);box-shadow:0 0 0 4px var(--warn-soft)}
+
+.vc{display:flex;flex-direction:column;gap:12px}
+.vc-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.vc-h b{display:block;font-size:17px}
+.vc-h small{display:block;font-size:12.5px;color:var(--ink-3);margin-top:1px}
+.vc-p{text-align:right}
+.vc-p b{font-size:21px;font-variant-numeric:tabular-nums}
+.vd{border-radius:18px;padding:16px 18px}
+.vd>span{display:block;font-size:30px;font-weight:850;letter-spacing:.02em;line-height:1.1}
+.vd small{display:block;font-size:13.5px;margin-top:5px;opacity:.9}
+.vd.go{background:var(--accent-soft);color:var(--accent)}
+.vd.out{background:var(--warn-soft);color:var(--warn)}
+.vd.hold{background:var(--good-soft);color:var(--good)}
+.vd.none{background:var(--field);color:var(--ink-2)}
+.vd.none>span{font-size:24px}
+.vd.tight{background:transparent;color:var(--warn);border:2px dashed var(--warn)}
+.vd.tight>span{font-size:24px}
+.vorder{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;border:1px solid var(--line);background:var(--card-solid);font-size:15px}
+.vorder>span:not(.side){flex:1}
+.vorder small{color:var(--ink-3)}
+.vorder em{font-style:normal;font-size:12.5px;font-weight:700;color:var(--warn);white-space:nowrap}
+.vorder .side{min-width:44px}
+.vdone{padding:12px 14px;border-radius:14px;background:var(--good-soft);color:var(--good);font-weight:700;font-size:14.5px}
+.vgoal{display:grid;gap:7px}
+.vg-t{display:flex;align-items:baseline;gap:8px}
+.vg-t span{font-size:13px;color:var(--ink-2)}
+.vg-t b{font-size:20px;font-variant-numeric:tabular-nums}
+.vg-t em{font-style:normal;margin-left:auto;font-weight:750;font-size:14px;font-variant-numeric:tabular-nums}
+.vg-bar{height:10px;border-radius:6px;background:var(--field);overflow:hidden}
+.vg-bar i{display:block;height:100%;border-radius:6px;background:var(--accent)}
+.vg-bar.out i{background:var(--warn)}
+.vgoal small{font-size:13px;color:var(--ink-3)}
+.vgoal small b{color:var(--ink)}
+.vtrade{font-size:13.5px;color:var(--ink-2)}
+.vnote{margin:0;font-size:13px;color:var(--ink-2)}
+.vin{margin:0}
+.vin input{font-weight:700}
+.vc .btn.small{align-self:flex-start;margin-top:0}
+.vc-more{align-self:flex-start;margin-top:auto;border:0;background:none;color:var(--accent);font:inherit;font-weight:650;font-size:14px;padding:2px 0;cursor:pointer}
+@media (max-width:420px){.vh-big{font-size:29px}.vd>span{font-size:26px}.tl-pt{font-size:10.5px}}
+
+/* Journal : liste des trades */
+.t-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.seg.two{grid-template-columns:repeat(2,1fr);min-width:240px;box-shadow:none}

@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="app.css?v=202611092239">
+<link rel="stylesheet" href="app.css?v=202611092310">
 <script>try{var t=JSON.parse(localStorage.getItem("repli:theme"));if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
 <body>
@@ -59,32 +59,17 @@
     <!-- ORDRES -->
     <section class="view" id="v-ordres" data-title="Ce soir" hidden>
       <div class="grid">
-        <article class="card s12" id="o-head"></article>
-        <div class="s12 seg" id="o-seg" role="tablist"></div>
-        <div class="s12 list" id="o-list"></div>
+        <article class="card s12 vh" id="o-head"></article>
+        <div class="s12 grid sub" id="o-list"></div>
         <details class="card s12 more-card">
-          <summary><h2 style="margin:0">Comment faire dans MetaTrader 5</h2></summary>
+          <summary><h2 style="margin:0">Passer l'ordre dans MetaTrader 5</h2></summary>
           <ol class="steps">
-            <li>Vers <b id="o-when">21 h 50</b> (heure de Paris), regarde le prix de <b>SPX500</b> et <b>NDX100</b> dans MT5 et entre-le dans la carte de l'indice : l'appli te dit quoi faire.</li>
+            <li>À <b id="o-when">21 h 50</b> (heure de Paris), lis le verdict de chaque indice ci-dessus.</li>
             <li><b>Entrer</b> : double-clic sur le symbole → <b>Ordre au marché</b>, volume = nombre de lots indiqué → <b>Buy</b>.</li>
             <li>Compte financé seulement : clic droit sur le trade → <b>Modifier</b> → <b>Stop Loss</b> au niveau indiqué (règle FundedNext des 3 %).</li>
             <li><b>Sortir</b> : onglet « Trade », <b>croix ×</b> au bout de la ligne du trade. Jamais « Sell » : ça ouvrirait un deuxième trade à l'envers.</li>
             <li>Note chaque entrée et chaque sortie dans le <b>Journal</b>, avec le prix réellement obtenu.</li>
           </ol>
-          <p class="muted">Raté l'heure ? Le CFD cote jusqu'à environ 23 h (heure de Paris) : passe l'ordre juste après la clôture, au prix le plus proche.</p>
-        </details>
-        <details class="card s12 more-card">
-          <summary><h2 style="margin:0">Les mots de l'appli</h2></summary>
-          <div class="rules">
-            <div><b>Entrer</b><span>Acheter l'indice (bouton Buy dans MT5). Le trade commence.</span></div>
-            <div><b>Sortir</b><span>Fermer le trade (la croix × dans MT5). On encaisse le gain ou la perte.</span></div>
-            <div><b>Fin de journée</b><span>Le prix au moment où la Bourse de New York ferme : 22 h à Paris (21 h certaines semaines).</span></div>
-            <div><b>Niveau d'entrée</b><span>Si le prix de fin de journée est en dessous, on entre ce soir-là.</span></div>
-            <div><b>Niveau de sortie</b><span>Si le prix de fin de journée est au-dessus, on sort ce soir-là. Il change chaque jour.</span></div>
-            <div><b>Sortie obligatoire</b><span>Au bout d'environ 2 semaines, on sort quoi qu'il arrive.</span></div>
-            <div><b>Stop</b><span>Sortie automatique si le prix tombe trop bas. Obligatoire seulement sur le compte financé.</span></div>
-            <div><b>Lot</b><span>La quantité achetée dans MT5. L'appli calcule le nombre de lots pour toi.</span></div>
-          </div>
         </details>
       </div>
     </section>
@@ -127,6 +112,19 @@
             <button class="btn ghost small" id="n-copy">Copier le code</button>
           </div>
         </article>
+        <details class="card s12 more-card">
+          <summary><h2 style="margin:0">Les mots de l'appli</h2></summary>
+          <div class="rules">
+            <div><b>Entrer</b><span>Acheter l'indice (bouton Buy dans MT5). Le trade commence.</span></div>
+            <div><b>Sortir</b><span>Fermer le trade (la croix × dans MT5). On encaisse le gain ou la perte.</span></div>
+            <div><b>Fin de journée</b><span>Le prix au moment où la Bourse de New York ferme : 22 h à Paris (21 h certaines semaines).</span></div>
+            <div><b>Niveau d'entrée</b><span>Si le prix de fin de journée est en dessous, on entre ce soir-là.</span></div>
+            <div><b>Niveau de sortie</b><span>Si le prix de fin de journée est au-dessus, on sort ce soir-là. Il change chaque jour.</span></div>
+            <div><b>Sortie obligatoire</b><span>Au bout d'environ 2 semaines, on sort quoi qu'il arrive.</span></div>
+            <div><b>Stop</b><span>Sortie automatique si le prix tombe trop bas. Obligatoire seulement sur le compte financé.</span></div>
+            <div><b>Lot</b><span>La quantité achetée dans MT5. L'appli calcule le nombre de lots pour toi.</span></div>
+          </div>
+        </details>
         <article class="card s12">
           <h2>Les règles du Stellar 2-Step</h2>
           <div class="rules">
@@ -146,6 +144,10 @@
     <!-- JOURNAL -->
     <section class="view" id="v-journal" data-title="Journal de trades" hidden>
       <div class="grid">
+        <article class="card s12 t-card">
+          <div class="t-head"><h2 style="margin:0">Trades</h2><div class="seg two" id="t-seg" role="tablist"></div></div>
+          <div class="list" id="t-list"></div>
+        </article>
         <article class="card s8">
           <h2>Mes résultats</h2>
           <div class="kpis" id="j-kpis"></div>
@@ -257,6 +259,6 @@
   <div class="sheet-bg" data-close></div>
   <div class="sheet" role="dialog" aria-modal="true" aria-label="Détail"><button class="sheet-x" data-close aria-label="Fermer">×</button><div id="sheet-body"></div></div>
 </div>
-<script src="app.js?v=202611092239"></script>
+<script src="app.js?v=202611092310"></script>
 </body>
 </html>
