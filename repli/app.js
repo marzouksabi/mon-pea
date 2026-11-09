@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 09/11 22:31';
+  var VERSION = 'version du 09/11 22:32';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -293,7 +293,7 @@
     });
     var big = when + ' : ' + (todo.length ? todo.join(', et ') : 'rien à faire');
     var sub = (open.length ? 'Trade en cours : ' + open.join(' · ') + '. ' : 'Aucun trade en cours. ') +
-      (todo.length ? 'Décide vers ' + hm(cl - 600000) + ', juste avant la fin de journée à New York (' + hm(cl) + ').' : 'Aucun indice ne peut donner d\'entrée ce soir.');
+      (todo.length ? 'Décide vers ' + hm(cl - 600000) + ', juste avant la fin de journée à New York (' + hm(cl) + ').' : 'Aucun indice ne peut donner d\'entrée ' + (when === 'Ce soir' ? 'ce soir' : when.toLowerCase()) + '.');
     $('hero').innerHTML = '<h3>' + cap(longDay(session)) + ' · fin de journée à ' + hm(cl) + '</h3><div class="big">' + esc(big) + '</div><p>' + esc(sub) + '</p>' +
       '<div class="chips"><span class="chip">Compte ' + nf(cfg.size / 1000) + 'k · ' + (cfg.phase == 3 ? 'financé' : 'phase ' + cfg.phase) + '</span><span class="chip">' + nf(cfg.lev, 1) + ' × par indice</span>' +
       (cfg.phase == 3 ? '<span class="chip">Stop ' + nf(stopPct() * 100, 1) + ' %</span>' : '') + '</div>' +
