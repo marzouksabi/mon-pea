@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 09/11 22:27';
+  var VERSION = 'version du 09/11 22:31';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -981,6 +981,14 @@
     fhKey = $('fh-key').value.trim(); store.set('fhkey', fhKey); startLive();
   });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') pollLive(); });
+
+  /* ---------- mode de test (adresse terminee par ?qa) : simuler un prix pour verifier chaque situation ---------- */
+  if (/[?&]qa(&|$)/.test(location.search)) window.__qa = {
+    A: A, IDX: IDX, plan: plan, ladder: ladder,
+    jusqua: function (iso) { var lim = dn(iso); PROV = {}; clearInterval(liveTimer); liveTimer = 1; Object.keys(IDX).forEach(function (k) { var I = IDX[k], n = I.days.filter(function (d) { return d <= lim; }).length;
+      ['c', 'o', 'h', 'l', 'days'].forEach(function (f) { I[f] = I[f].slice(0, n); }); A[k] = analyze(k); }); LIVEQ = {}; renderAll(); return session; },
+    prix: function (k, p) { LIVEQ[k] = { p: p, at: Date.now(), day: session, src: 'test', delayed: false }; refreshLive(); return ladder(plan(k)).verb; }
+  };
 
   /* ---------- theme clair / sombre ---------- */
   function isDark() {
