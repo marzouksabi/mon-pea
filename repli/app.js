@@ -18,6 +18,22 @@
   var longDay = function (d) { var x = new Date(d * DAY); return JOURS[x.getUTCDay()] + ' ' + x.getUTCDate() + ' ' + MOIS[x.getUTCMonth()]; };
   var jours = function (n) { return n + ' jour' + (n > 1 ? 's' : ''); };
   var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  /* icones (trait fin, couleur du texte) : aucune emoji dans l'application */
+  var ICONS = {
+    enter: '<path d="M7 17 17 7"/><path d="M9 7h8v8"/>',
+    exit: '<path d="M9 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3"/><path d="m15 16 4-4-4-4"/><path d="M19 12H9"/>',
+    hold: '<rect x="6.5" y="5" width="3.5" height="14" rx="1"/><rect x="14" y="5" width="3.5" height="14" rx="1"/>',
+    none: '<circle cx="12" cy="12" r="8.5"/><path d="M8 12h8"/>',
+    stop: '<path d="M8.3 3h7.4L21 8.3v7.4L15.7 21H8.3L3 15.7V8.3z"/><path d="m9.5 9.5 5 5M14.5 9.5l-5 5"/>',
+    wait: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    tight: '<path d="M12 4 21 20H3z"/><path d="M12 10v4.5"/><path d="M12 17.3v.2"/>',
+    check: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
+    cross: '<path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/>',
+    alert: '<path d="M12 6.5v7"/><path d="M12 17.3v.2"/>',
+    info: '<path d="M12 10.5v7"/><path d="M12 6.8v.2"/>',
+    cash: '<path d="M15.5 8.5c-.6-1.2-1.9-2-3.5-2-2 0-3.5 1.1-3.5 2.6 0 3.5 7 1.9 7 5.4 0 1.5-1.5 2.6-3.5 2.6-1.6 0-3-.8-3.6-2"/><path d="M12 4.5v2M12 17.1v2.4"/>'
+  };
+  var ico = function (n, cls) { return '<svg class="ico' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[n] || '') + '</svg>'; };
   var store = {
     get: function (k, d) { try { var v = localStorage.getItem('repli:' + k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
     set: function (k, v) { try { localStorage.setItem('repli:' + k, JSON.stringify(v)); } catch (e) { /* stockage indisponible */ } }
@@ -62,7 +78,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date(nowMs()))); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 09/11 23:37';
+  var VERSION = 'version du 09/11 23:43';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -372,13 +388,13 @@
       if (HOLIDAYS.indexOf(ds(d)) >= 0 && new Date(d * DAY).getUTCDay() % 6) { out.push(['', 'i', '<b>Bourse de New York fermée le ' + longDay(d) + '.</b> Rien à faire ce jour-là.']); break; }
       if (EARLY.indexOf(ds(d)) >= 0) { out.push(['warn', '!', '<b>La Bourse ferme plus tôt le ' + longDay(d) + '</b> : fin de journée à ' + hm(closeUTC(d)) + ' (heure de Paris).']); break; }
     }
-    if (s.target && s.bal >= s.target) out.push(['ok', '✓', '<b>Objectif de la phase atteint.</b> Vérifie les 5 jours de trading, puis passe à l\'étape suivante dans Compte.']);
-    if (!out.length) out.push(['ok', '✓', '<b>Rien à signaler.</b> Compte actif, prix à jour.']);
+    if (s.target && s.bal >= s.target) out.push(['ok', 'check', '<b>Objectif de la phase atteint.</b> Vérifie les 5 jours de trading, puis passe à l\'étape suivante dans Compte.']);
+    if (!out.length) out.push(['ok', 'check', '<b>Rien à signaler.</b> Compte actif, prix à jour.']);
     return out;
   }
   function renderAlerts() {
     $('mini-alerts').innerHTML = '<h3>À surveiller</h3><ul class="alerts" style="margin-top:10px">' + alertList().map(function (a) {
-      return '<li class="' + a[0] + '"><span class="ic">' + a[1] + '</span><span>' + a[2] + '</span></li>';
+      return '<li class="' + a[0] + '"><span class="ic">' + ico({ '!': 'alert', i: 'info', '$': 'cash' }[a[1]] || a[1]) + '</span><span>' + a[2] + '</span></li>';
     }).join('') + '</ul>';
   }
   function renderMiniJournal() {
@@ -394,7 +410,7 @@
 
   /* ---------- onglet Ordres : 3 listes (en attente, en cours, termines) et une fiche detaillee ---------- */
   var otab = store.get('otab', 'cours') === 'termines' ? 'termines' : 'cours', sheetId = null;
-  var BUY = '<span class="side buy">BUY ↑</span>';
+  var BUY = '<span class="side buy">BUY</span>';
 
   /* jauge : ou est le prix par rapport aux niveaux (entree, sortie, stop) */
   function thermo(marks, cur, zone, curLabel) {
@@ -412,7 +428,7 @@
 
 
   /* ---------- decision : une echelle de prix ou chaque zone est une action ---------- */
-  var VERBS = { SORTIR: ['🚪', 'Sortir', 'act'], GARDER: ['✋', 'Garder', 'ok'], STOP: ['⛔', 'Stop touché', 'act'], ENTRER: ['✅', 'Entrer', 'watch'], ATTENDRE: ['⏳', 'Attendre', 'idle'], INTERDIT: ['⛔', 'Attendre', 'idle'] };
+  var VERBS = { SORTIR: ['exit', 'Sortir', 'act'], GARDER: ['hold', 'Garder', 'ok'], STOP: ['stop', 'Stop touché', 'act'], ENTRER: ['enter', 'Entrer', 'watch'], ATTENDRE: ['wait', 'Attendre', 'idle'], INTERDIT: ['stop', 'Attendre', 'idle'] };
   function zonesFor(o) {
     var a = o.a, tr = o.trade, Z = [], INF = Infinity;
     if (tr && tr.hit) return { zones: [{ v: 'STOP', c: 'z-no', cond: 'le stop a fermé le trade le ' + shortDay(tr.hit), lo: -INF, hi: INF }], fixed: true };
@@ -437,7 +453,7 @@
     var html = '<div class="ladder">' + Z.map(function (z, i) {
       return (i > 0 ? '<div class="lb"><span>' + px(Z[i - 1].lo) + '</span></div>' : '') +
         '<div class="lz ' + z.c + (i === on ? ' on' : '') + '"><b class="verb">' + VERBS[z.v][1].toUpperCase() + '</b><span class="cond">' + esc(z.cond) + '</span>' +
-        (i === on && !zz.fixed ? '<span class="here">● ' + src + '<br><b>' + px(cur) + '</b></span>' : '') + '</div>';
+        (i === on && !zz.fixed ? '<span class="here"><i class="hd"></i>' + src + '<br><b>' + px(cur) + '</b></span>' : '') + '</div>';
     }).join('') + '</div>';
     return { verb: Z[on].v, fixed: !!zz.fixed, html: html };
   }
@@ -447,7 +463,7 @@
     var when = !today ? 'Décision ' + longDay(session) + ' à ' + hm(dec) : now < dec ? 'Décision ce soir à ' + hm(dec) + ' · peut encore changer d\'ici là' : now < cl ? 'C\'est le moment : décide avant ' + hm(cl) : 'Journée terminée';
     if (L.fixed && L.verb !== 'SORTIR') when = today ? 'Ce soir' : cap(longDay(session));
     if (o.trade && o.trade.orphan) when = 'À faire dès que possible, puis noter la sortie';
-    return '<div class="decision ' + V[2] + '"><span class="dv">' + V[0] + ' ' + V[1].toUpperCase() + '</span><small>' + esc(when) + '</small></div>' + L.html;
+    return '<div class="decision ' + V[2] + '"><span class="dv">' + ico(V[0]) + ' ' + V[1].toUpperCase() + '</span><small>' + esc(when) + '</small></div>' + L.html;
   }
 
 
@@ -491,7 +507,7 @@
   /* ---------- onglet Ce soir : l'ecran du verdict ----------
      Avant 21 h 30 : compte a rebours et ce qui peut arriver ce soir. De 21 h 30 a 22 h : un verdict par indice, avec l'ordre exact.
      Apres la cloture officielle (vers 22 h 16) : le verdict officiel et ce qu'il reste a faire avant 23 h. */
-  var VD = { ENTRER: ['✅', 'Entrer', 'go'], SORTIR: ['🚪', 'Sortir', 'out'], GARDER: ['✋', 'Garder', 'hold'], RIEN: ['', 'Rien à faire', 'none'], STOP: ['⛔', 'Stop touché', 'out'] };
+  var VD = { ENTRER: ['enter', 'Entrer', 'go'], SORTIR: ['exit', 'Sortir', 'out'], GARDER: ['hold', 'Garder', 'hold'], RIEN: ['none', 'Rien à faire', 'none'], STOP: ['stop', 'Stop touché', 'out'] };
   function dailyVol(k) {                                             // ecart-type des variations quotidiennes sur 20 jours (au moins 0,7 %)
     var c = IDX[k].c, n = c.length, s = 0, s2 = 0, m = Math.min(20, n - 1);
     for (var i = n - m; i < n; i++) { var r = Math.log(c[i] / c[i - 1]); s += r; s2 += r * r; }
@@ -536,12 +552,12 @@
   function orderLine(verb, k, p) {
     var sym = IDX[k] ? IDX[k].sym : '';
     if (verb === 'ENTRER') { var lt = lotsFor(k, p); return '<span class="side buy">BUY</span><span><b>' + nf(lt.lots, 2) + ' lots</b> · ' + sym + (cfg.phase == 3 ? ' · stop <b>' + px(p * (1 - stopPct())) + '</b>' : '') + '</span>'; }
-    if (verb === 'SORTIR') return '<span class="side out">×</span><span>Croix <b>×</b> sur la ligne ' + sym + ' <small>(pas « Sell »)</small></span>';
+    if (verb === 'SORTIR') return '<span class="side out">' + ico('cross') + '</span><span>Croix <b>×</b> sur la ligne ' + sym + ' <small>(pas « Sell »)</small></span>';
     if (verb === 'STOP') return '<span>MT5 a fermé le trade : note la sortie au journal</span>';
     if (verb === 'GARDER') return '<span>Ne touche à rien</span>';
     return '<span>Rien à faire</span>';
   }
-  var vdBox = function (verb, sub, cls) { var V = VD[verb]; return '<div class="vd ' + (cls || V[2]) + '"><span>' + (V[0] ? V[0] + ' ' : '') + V[1].toUpperCase() + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>'; };
+  var vdBox = function (verb, sub, cls) { var V = VD[verb]; return '<div class="vd ' + (cls || V[2]) + '"><span>' + ico(V[0]) + V[1].toUpperCase() + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>'; };
   var vHead = function (I, p, ch, src) {
     return '<div class="vc-h"><div><b>' + I.name + '</b><small>' + I.sym + ' dans MT5</small></div><div class="vc-p"><b>' + px(p) + '</b><small>' +
       (ch !== null ? '<span class="' + (ch >= 0 ? 'pos' : 'neg') + '">' + pct(ch) + '</span> · ' : '') + esc(src) + '</small></div></div>';
@@ -586,10 +602,10 @@
       html = vHead(o.I, cur !== null ? cur : a.P, cur !== null ? cur / a.P - 1 : null, cur !== null ? o.np.src : 'clôture du ' + shortDay(a.last)) +
         vdBox(v.verb, esc(cap(zonesFor(o).zones[0].cond))) + (v.verb === 'SORTIR' ? '<div class="vorder">' + orderLine('SORTIR', o.k, cur || a.P) + '</div>' : '');
     } else if (cur === null) {
-      html = vHead(o.I, a.P, null, 'clôture du ' + shortDay(a.last)) + '<div class="vd tight"><span>PRIX MANQUANT</span><small>Le prix du moment n\'arrive pas : tape celui de MT5.</small></div>' + vInput(o);
+      html = vHead(o.I, a.P, null, 'clôture du ' + shortDay(a.last)) + '<div class="vd tight"><span>' + ico('tight') + 'PRIX MANQUANT</span><small>Le prix du moment n\'arrive pas : tape celui de MT5.</small></div>' + vInput(o);
     } else if (v.tight) {
       html = vHead(o.I, cur, cur / a.P - 1, o.np.src) +
-        '<div class="vd tight"><span>⚖️ TROP SERRÉ</span><small>À ' + nf(v.gap * 100, 2) + ' % du niveau ' + px(v.near) + ' · penche vers « ' + VD[v.verb][1].toLowerCase() + ' »</small></div>' + vInput(o) +
+        '<div class="vd tight"><span>' + ico('tight') + 'TROP SERRÉ</span><small>À ' + nf(v.gap * 100, 2) + ' % du niveau ' + px(v.near) + ' · penche vers « ' + VD[v.verb][1].toLowerCase() + ' »</small></div>' + vInput(o) +
         '<p class="vnote">Ou attends le verdict officiel à ' + hm(m.off) + ' : tu as jusqu\'à ' + hm(m.lim) + ' pour agir.</p>';
     } else {
       var jt = trades.filter(function (t) { return t.idx === o.k && !t.d2; })[0];
@@ -605,7 +621,7 @@
     var html = vHead(r.I, r.P, r.ch, 'clôture officielle'), late = m.now > m.lim, todo = late ? '' : '<em>avant ' + hm(m.lim) + '</em>', sub;
     if (r.verb === 'ENTRER') {
       var done = r.jt && dn(r.jt.d1) >= m.day;
-      html += vdBox('ENTRER', 'Clôture sous le niveau ' + px(r.level)) + (done ? '<div class="vdone">✓ Entrée notée au journal</div>'
+      html += vdBox('ENTRER', 'Clôture sous le niveau ' + px(r.level)) + (done ? '<div class="vdone">' + ico('check') + ' Entrée notée au journal</div>'
         : '<div class="vorder">' + orderLine('ENTRER', r.k, r.P) + todo + '</div><button class="btn ghost small" data-jnote="' + r.k + '|' + r.P + '|' + ds(m.day) + '">J\'ai acheté : noter au journal</button>');
     } else if (r.verb === 'SORTIR') {
       sub = (r.forced ? 'Dernier jour du trade' : 'Clôture au-dessus du niveau ' + px(r.level)) + ' · ' + pct(r.g) + ' sur l\'indice';
@@ -693,18 +709,18 @@
     if (type === 'att') {
       o = plan(parts[1]); var a = o.a, C = conds(o), ok = o.tone === 'watch', nOk = (C.c1 ? 1 : 0) + (C.c2 ? 1 : 0), go = C.c1 && C.c2 && C.cur < a.X;
       var lt = lotsFor(o.k, ok ? (o.np ? o.np.p : a.X) : a.P), stop = (o.np ? o.np.p : a.X) * (1 - stopPct());
-      var head = go ? ['watch', '✅ ENTRER ce soir', 'Les deux conditions sont réunies : achète vers ' + hm(closeUTC(session) - 600000) + ' si ça tient jusqu\'à la fin de journée.']
-        : !C.c1 ? ['idle', '⏳ EN ATTENTE', 'On attend que le ' + o.I.name + ' repasse au-dessus de sa moyenne des 200 jours, puis une forte baisse sur 2 jours.']
-        : ['idle', '⏳ EN ATTENTE', 'La tendance est bonne. On attend maintenant une forte baisse sur 2 jours.'];
+      var head = go ? ['watch', ico('enter') + ' ENTRER ce soir', 'Les deux conditions sont réunies : achète vers ' + hm(closeUTC(session) - 600000) + ' si ça tient jusqu\'à la fin de journée.']
+        : !C.c1 ? ['idle', ico('wait') + ' EN ATTENTE', 'On attend que le ' + o.I.name + ' repasse au-dessus de sa moyenne des 200 jours, puis une forte baisse sur 2 jours.']
+        : ['idle', ico('wait') + ' EN ATTENTE', 'La tendance est bonne. On attend maintenant une forte baisse sur 2 jours.'];
       html = '<div class="sh-head">' + (go ? BUY : '<span class="side none">—</span>') + '<div><h2>' + o.I.name + ' · ' + px(C.cur) + '</h2><small>' + o.I.sym + ' · prix ' + esc(C.src) + '</small></div></div>' +
         '<div class="decision ' + head[0] + '"><span class="dv">' + head[1] + '</span><small>' + esc(head[2]) + '</small></div>' +
         '<div class="cond-head"><b>Les 2 conditions pour entrer</b><span class="chipx ' + (nOk === 2 ? 'ok' : nOk === 1 ? 'watch' : 'idle') + '">' + nOk + ' / 2 remplie' + (nOk > 1 ? 's' : '') + '</span></div>' +
         /* condition 1 : tendance */
-        '<div class="cond ' + (C.c1 ? 'yes' : 'no') + '"><div class="cond-t"><span class="ck">' + (C.c1 ? '✓' : '✗') + '</span><div><b>1. Tendance haussière</b><small>le prix doit être au-dessus de sa moyenne des 200 derniers jours</small></div></div>' +
+        '<div class="cond ' + (C.c1 ? 'yes' : 'no') + '"><div class="cond-t"><span class="ck">' + ico(C.c1 ? 'check' : 'cross') + '</span><div><b>1. Tendance haussière</b><small>le prix doit être au-dessus de sa moyenne des 200 derniers jours</small></div></div>' +
         thermo([{ v: C.F, label: 'moyenne 200 j', cls: 'k-in' }], C.cur, { side: 'right', v: C.F, cls: 'z-in', label: 'zone de tendance haussière →' }, C.live ? 'maintenant' : 'clôture') +
         '<p class="cond-s">' + (C.c1 ? 'Remplie : ' + pct(C.cur / C.F - 1) + ' au-dessus de la moyenne.' : 'Pas remplie : il faut remonter de <b>' + pct(C.F / C.cur - 1) + '</b> pour repasser au-dessus de ' + px(C.F) + '.') + '</p></div>' +
         /* condition 2 : forte baisse */
-        '<div class="cond ' + (C.c2 ? 'yes' : 'no') + '"><div class="cond-t"><span class="ck">' + (C.c2 ? '✓' : '✗') + '</span><div><b>2. Forte baisse sur 2 jours</b><small>l\'indicateur de baisse (RSI 2 jours) doit passer sous 10</small></div></div>' +
+        '<div class="cond ' + (C.c2 ? 'yes' : 'no') + '"><div class="cond-t"><span class="ck">' + ico(C.c2 ? 'check' : 'cross') + '</span><div><b>2. Forte baisse sur 2 jours</b><small>l\'indicateur de baisse (RSI 2 jours) doit passer sous 10</small></div></div>' +
         rsiGauge(C.rsi) +
         '<p class="cond-s">' + (C.c2 ? 'Remplie : indicateur à <b>' + nf(C.rsi, 0) + '</b>, sous 10.' : 'Pas encore : indicateur à <b>' + nf(C.rsi, 0) + '</b>. Il passerait sous 10 si le ' + o.I.name + ' finissait sous <b>' + px(a.X) + '</b> (' + pct(a.X / C.cur - 1) + ').') + '</p></div>' +
         /* scenarios */
@@ -750,7 +766,7 @@
       k = t.k;
       html = '<div class="sh-head">' + BUY + '<div><h2>' + IDX[k].name + '</h2><small>' + IDX[k].sym + ' · ' + (t.src === 'journal' ? 'mon trade (journal)' : 'trade de la règle') + '</small></div></div>' +
         '<div class="sh-pl ' + (t.usd >= 0 ? 'pos' : 'neg') + '">' + sUsd(t.usd) + '<small>' + pct(t.usd / cfg.size) + ' du compte</small></div>' +
-        '<div class="big-state ' + (t.usd >= 0 ? 'ok' : 'idle') + '">' + (t.usd >= 0 ? '✓ Trade gagnant' : '✗ Trade perdant') + '</div>' +
+        '<div class="big-state ' + (t.usd >= 0 ? 'ok' : 'idle') + '">' + (t.usd >= 0 ? ico('check') + ' Trade gagnant' : ico('cross') + ' Trade perdant') + '</div>' +
         '<div class="tiles">' + tile('Entrée', shortDay(t.e) + ' · ' + px(t.pe)) + tile('Sortie', shortDay(t.x) + ' · ' + px(t.px)) + tile('Durée', jours(t.x - t.e)) +
         tile('Variation de l\'indice', pct(t.g), t.g >= 0 ? 'pos' : 'neg') + tile('Résultat', sUsd(t.usd), t.usd >= 0 ? 'pos' : 'neg') + tile('Lots', t.lots ? nf(t.lots, 2) : nf(lotsFor(k, t.pe).lots, 2)) + '</div>' +
         (t.src === 'regle' ? '<p class="muted">Calculé sur ton compte de ' + usd(cfg.size) + ' à ' + nf(cfg.lev, 1) + ' ×, frais estimés compris.</p>' : '');
@@ -1097,7 +1113,7 @@
       if (o.trade && !o.trade.hit) lvl = a.forced ? 'Dernier jour : sortir à 22 h' : 'Sortie si &gt; <b>' + px(a.Y) + '</b> à 22 h';
       else if (!o.trade && a.possible) lvl = 'Entrée si &lt; <b>' + px(a.X) + '</b> à 22 h';
       else lvl = 'Pas d\'entrée ce soir';
-      $('g-status').innerHTML = '<div class="g-line">' + chip(V[0] + ' ' + V[1], V[2]) + '<span>' + lvl + '</span></div>';
+      $('g-status').innerHTML = '<div class="g-line">' + chip(ico(V[0]) + ' ' + V[1], V[2]) + '<span>' + lvl + '</span></div>';
     }
     document.querySelectorAll('[data-gmode]').forEach(function (b) { b.setAttribute('aria-selected', b.dataset.gmode === gmode); });
     $('g-int').hidden = gmode !== 'live';
