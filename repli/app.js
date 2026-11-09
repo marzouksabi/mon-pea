@@ -62,7 +62,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date(nowMs()))); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 09/11 23:36';
+  var VERSION = 'version du 09/11 23:37';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -1125,7 +1125,7 @@
   /* ---------- prix en direct ----------
      Avec une cle Finnhub (gratuite) : SPY et QQQ en temps reel, convertis en niveau d'indice
      (indice d'hier soir x variation du fonds depuis hier soir). Sans cle : indices officiels via TradingView, differes de 10-15 min. */
-  var LIVEQ = {}, PROV = {}, fhKey = store.get('fhkey', ''), liveTimer = null, liveState = '';
+  var LIVEQ = {}, PROV = store.get('prov', {}), fhKey = store.get('fhkey', ''), liveTimer = null, liveState = '';
   /* clotures recuperees en direct, collees a la suite des donnees du serveur seulement si les jours se suivent
      (PROV[k][jour] = barre) : la regle reste juste meme si la mise a jour du serveur a 1 ou 2 jours de retard */
   function applyProvisional() {
@@ -1162,7 +1162,9 @@
             if (d > upto || !b) break;                                // barre du jour pas encore terminee
             PROV[k] = PROV[k] || {}; PROV[k][d] = b;
           }
+          Object.keys(PROV[k] || {}).forEach(function (q) { if (+q < upto - 60) delete PROV[k][q]; });
         });
+        if (!qaFreeze) store.set('prov', PROV);                       // garde sur l'appareil : la suite des jours continue meme sans le serveur
         if (applyProvisional()) { stampText(); renderAll(); }
       });
   }
