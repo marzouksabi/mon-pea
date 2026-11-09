@@ -1,15 +1,18 @@
-name: Notification du soir (Repli)
+name: Notifications du soir (Repli)
 
 on:
   schedule:
-    # Plusieurs passages : le script n'envoie que dans la fenêtre de 15 h 20 à 16 h à New York
-    # (heure d'été comme d'hiver, et 12 h 20 – 13 h les jours de fermeture anticipée).
-    - cron: '30 16,17,19,20 * * 1-5'
+    # toutes les 10 minutes de 16 h à 23 h 50 UTC les jours de semaine : le script décide s'il est l'heure
+    # (décision avant la fin de journée à New York, bilan après), été comme hiver, et un seul envoi par moment.
+    - cron: '*/10 16-23 * * 1-5'
   workflow_dispatch:
     inputs:
       test:
-        description: "Envoyer maintenant une notification de test (oui/non)"
+        description: "Envoyer maintenant, sans attendre l'heure (oui/non)"
         default: 'oui'
+      moment:
+        description: "Quel message : decision ou bilan"
+        default: 'decision'
 
 permissions:
   contents: read
@@ -17,16 +20,36 @@ permissions:
 jobs:
   notify:
     runs-on: ubuntu-latest
+    env:
+      FORCE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.test || '' }}
+      MOMENT: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.moment || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Installer l'envoi de notifications
-        run: pip install "pywebpush>=1.14,<3"
-      - name: Envoyer la notification
-        run: python scripts/notify.py
+      - name: Quel moment ?
+        id: slot
+        run: python scripts/notify.py --slot >> "$GITHUB_OUTPUT"
+      - name: Déjà envoyé aujourd'hui ?
+        id: seen
+        if: steps.slot.outputs.slot != 'none' && env.FORCE != 'oui'
+        uses: actions/cache/restore@v4
+        with:
+          path: .notif
+          key: notif-${{ steps.slot.outputs.day }}-${{ steps.slot.outputs.slot }}
+      - name: Envoyer
+        if: steps.slot.outputs.slot != 'none' && steps.seen.outputs.cache-hit != 'true'
+        run: |
+          pip install -q "pywebpush>=1.14,<3"
+          python scripts/notify.py --send ${{ steps.slot.outputs.slot }}
+          mkdir -p .notif && date -u > .notif/envoye
         env:
           VAPID_PRIVATE: ${{ secrets.VAPID_PRIVATE }}
           PUSH_SUBS: ${{ secrets.PUSH_SUBS }}
-          FORCE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.test || '' }}
+      - name: Mémoriser l'envoi
+        if: steps.slot.outputs.slot != 'none' && steps.seen.outputs.cache-hit != 'true' && env.FORCE != 'oui'
+        uses: actions/cache/save@v4
+        with:
+          path: .notif
+          key: notif-${{ steps.slot.outputs.day }}-${{ steps.slot.outputs.slot }}
