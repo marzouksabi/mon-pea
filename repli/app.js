@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 09/11 22:32';
+  var VERSION = 'version du 09/11 22:39';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -376,12 +376,12 @@
   var BUY = '<span class="side buy">BUY ↑</span>';
 
   /* jauge : ou est le prix par rapport aux niveaux (entree, sortie, stop) */
-  function thermo(marks, cur, zone) {
+  function thermo(marks, cur, zone, curLabel) {
     var vs = marks.map(function (m) { return m.v; }).concat([cur]), lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs), pad = (hi - lo) * 0.18 || cur * 0.01;
     lo -= pad; hi += pad;
     var X = function (v) { return Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100)).toFixed(2) + '%'; };
     var z = zone ? '<i class="zn ' + zone.cls + '" style="' + (zone.side === 'right' ? 'left:' + X(zone.v) + ';right:0' : 'left:0;width:' + X(zone.v)) + '"></i>' : '';
-    return '<div class="thermo"><div class="tc"><span class="now" style="left:' + X(cur) + '">maintenant<br><b>' + px(cur) + '</b></span></div>' +
+    return '<div class="thermo"><div class="tc"><span class="now" style="left:' + X(cur) + '">' + (curLabel || 'maintenant') + '<br><b>' + px(cur) + '</b></span></div>' +
       '<div class="tt">' + z + marks.map(function (m) { return '<i class="tk ' + m.cls + '" style="left:' + X(m.v) + '"></i>'; }).join('') + '<b class="dot" style="left:' + X(cur) + '"></b></div>' +
       '<div class="tl">' + marks.map(function (m) { return '<span class="' + m.cls + '" style="left:' + X(m.v) + '">' + m.label + '<br><b>' + px(m.v) + '</b></span>'; }).join('') + '</div>' +
       (zone ? '<div class="tz ' + zone.cls + '">' + zone.label + '</div>' : '') + '</div>';
@@ -429,6 +429,31 @@
     return '<div class="decision ' + V[2] + '"><span class="dv">' + V[0] + ' ' + V[1].toUpperCase() + '</span><small>' + esc(when) + '</small></div>' + L.html;
   }
 
+
+  /* ---------- conditions d'entree : ce qu'on attend et ou on en est ---------- */
+  function rsiAt(a, p) { var dd = p - a.P, au = (a.st.au + Math.max(dd, 0)) / 2, ad = (a.st.ad + Math.max(-dd, 0)) / 2; return ad === 0 ? 100 : 100 - 100 / (1 + au / ad); }
+  function twoDayDrop(a) {                       // baisse identique sur 2 jours qui ferait passer le RSI 2 jours sous 10
+    var ok = function (x) { var p1 = a.P * (1 - x), p2 = p1 * (1 - x), au2 = a.st.au / 4, ad1 = (a.st.ad + a.P - p1) / 2, ad2 = (ad1 + p1 - p2) / 2; return ad2 > 9 * au2; };
+    if (!ok(0.3)) return null;
+    var lo = 0, hi = 0.3; for (var i = 0; i < 40; i++) { var m = (lo + hi) / 2; if (ok(m)) hi = m; else lo = m; }
+    return hi;
+  }
+  function conds(o) {
+    var a = o.a, I = o.I, cur = o.np ? o.np.p : a.P, live = !!o.np, rsi = live ? rsiAt(a, cur) : a.rsi;
+    var ent = a.st.trades.map(function (t) { return t[0]; }), d5 = I.days[I.days.length - 1] - 5 * 365;
+    var recent = ent.filter(function (i) { return I.days[i] >= d5; }), gaps = [];
+    for (var q = 1; q < recent.length; q++) gaps.push(recent[q] - recent[q - 1]);
+    var d2 = twoDayDrop(a), p2 = d2 !== null ? a.P * (1 - d2) * (1 - d2) : null;
+    return { cur: cur, live: live, src: live ? o.np.src : 'clôture du ' + shortDay(a.last), c1: cur > a.F, c2: rsi < 10, rsi: rsi, F: a.F, X: a.X,
+      lastEntry: ent.length ? I.days[ent[ent.length - 1]] : null, gap: gaps.length ? Math.round(gaps.reduce(function (x, y) { return x + y; }, 0) / gaps.length) : null,
+      d2: d2, p2: p2, p2ok: p2 !== null && p2 > a.F };
+  }
+  function rsiGauge(rsi) {
+    var x = Math.max(0, Math.min(100, rsi));
+    return '<div class="rg"><div class="rg-top"><span class="rg-10">seuil 10</span>' + (Math.abs(x - 10) > 14 ? '<span class="rg-v" style="left:' + x + '%">' + nf(rsi, 0) + '</span>' : '') + '</div><div class="rg-t"><i class="rg-z"></i><i class="rg-m"></i><b class="dot" style="left:' + x + '%"></b></div>' +
+      '<div class="rg-l"><span>← forte baisse</span><span>forte hausse →</span></div></div>';
+  }
+
   /* trades termines : ceux du journal, puis ceux de la regle sur 12 mois */
   function doneList() {
     var out = [], pos = cfg.size * cfg.lev;
@@ -454,13 +479,11 @@
     var rows = '';
     if (otab === 'attente') {
       rows = att.map(function (o) {
-        var a = o.a, ok = o.tone === 'watch', cur = o.np ? o.np.p : a.P, src = o.np ? o.np.src : 'clôture du ' + shortDay(a.last), dist = a.X / cur - 1, need;
-        if (ok) need = cur < a.X ? '<b class="pos">dans la zone d\'entrée</b>' : 'il faut encore <b>' + pct(dist) + '</b>';
-        else need = a.P <= a.F ? 'prix sous la moyenne 200 j (' + px(a.F) + ')' : 'l\'entrée (' + px(a.X) + ') serait sous la moyenne 200 j';
-        var gauge = ok ? '<i class="mini"><i style="width:' + Math.max(4, Math.min(100, 100 * (1 - Math.max(0, dist * -1) / 0.05))) + '%"></i></i>' : '';
-        return '<button class="row" data-sheet="att:' + o.k + '">' + (ok ? BUY : '<span class="side none">—</span>') + '<span class="rm"><b>' + o.I.name + ' · ' + px(cur) + '</b><small>' + esc(src) +
-          (ok ? ' · entrée si fin &lt; ' + px(a.X) : '') + '</small><small>' + need + '</small>' + gauge + '</span>' +
-          '<span class="rr">' + verbChip(o) + '</span><span class="chev">›</span></button>';
+        var C = conds(o), n2 = (C.c1 ? 1 : 0) + (C.c2 ? 1 : 0), go = C.c1 && C.c2 && C.cur < o.a.X;
+        var what = !C.c1 ? 'attend le retour au-dessus de la moyenne 200 j (' + pct(C.F / C.cur - 1) + ')' : C.c2 ? 'conditions réunies' : 'attend une forte baisse sur 2 jours (sous ' + px(o.a.X) + ')';
+        return '<button class="row" data-sheet="att:' + o.k + '">' + (go ? BUY : '<span class="side none">—</span>') + '<span class="rm"><b>' + o.I.name + ' · ' + px(C.cur) + '</b><small>' + esc(C.src) + '</small><small>' + what + '</small>' +
+          '<span class="pips"><i class="' + (C.c1 ? 'on' : '') + '">tendance</i><i class="' + (C.c2 ? 'on' : '') + '">baisse</i></span></span>' +
+          '<span class="rr">' + (go ? chip('Entrer', 'watch') : chip(n2 + ' / 2', n2 === 2 ? 'ok' : n2 ? 'watch' : 'idle')) + '</span><span class="chev">›</span></button>';
       }).join('') || '<p class="empty">Les deux indices ont un trade en cours.</p>';
     } else if (otab === 'cours') {
       rows = cours.map(function (o) {
@@ -488,20 +511,36 @@
   function openSheet(id, refresh) {
     var parts = id.split(':'), type = parts[0], html = '', chart = null, k, o;
     if (type === 'att') {
-      o = plan(parts[1]); var a = o.a, cur = o.np ? o.np.p : a.P, ok = o.tone === 'watch';
+      o = plan(parts[1]); var a = o.a, C = conds(o), ok = o.tone === 'watch', nOk = (C.c1 ? 1 : 0) + (C.c2 ? 1 : 0), go = C.c1 && C.c2 && C.cur < a.X;
       var lt = lotsFor(o.k, ok ? (o.np ? o.np.p : a.X) : a.P), stop = (o.np ? o.np.p : a.X) * (1 - stopPct());
-      html = '<div class="sh-head">' + (ok ? BUY : '<span class="side none">—</span>') + '<div><h2>' + o.I.name + '</h2><small>' + o.I.sym + ' · en attente d\'une entrée</small></div></div>';
+      var head = go ? ['watch', '✅ ENTRER ce soir', 'Les deux conditions sont réunies : achète vers ' + hm(closeUTC(session) - 600000) + ' si ça tient jusqu\'à la fin de journée.']
+        : !C.c1 ? ['idle', '⏳ EN ATTENTE', 'On attend que le ' + o.I.name + ' repasse au-dessus de sa moyenne des 200 jours, puis une forte baisse sur 2 jours.']
+        : ['idle', '⏳ EN ATTENTE', 'La tendance est bonne. On attend maintenant une forte baisse sur 2 jours.'];
+      html = '<div class="sh-head">' + (go ? BUY : '<span class="side none">—</span>') + '<div><h2>' + o.I.name + ' · ' + px(C.cur) + '</h2><small>' + o.I.sym + ' · prix ' + esc(C.src) + '</small></div></div>' +
+        '<div class="decision ' + head[0] + '"><span class="dv">' + head[1] + '</span><small>' + esc(head[2]) + '</small></div>' +
+        '<div class="cond-head"><b>Les 2 conditions pour entrer</b><span class="chipx ' + (nOk === 2 ? 'ok' : nOk === 1 ? 'watch' : 'idle') + '">' + nOk + ' / 2 remplie' + (nOk > 1 ? 's' : '') + '</span></div>' +
+        /* condition 1 : tendance */
+        '<div class="cond ' + (C.c1 ? 'yes' : 'no') + '"><div class="cond-t"><span class="ck">' + (C.c1 ? '✓' : '✗') + '</span><div><b>1. Tendance haussière</b><small>le prix doit être au-dessus de sa moyenne des 200 derniers jours</small></div></div>' +
+        thermo([{ v: C.F, label: 'moyenne 200 j', cls: 'k-in' }], C.cur, { side: 'right', v: C.F, cls: 'z-in', label: 'zone de tendance haussière →' }, C.live ? 'maintenant' : 'clôture') +
+        '<p class="cond-s">' + (C.c1 ? 'Remplie : ' + pct(C.cur / C.F - 1) + ' au-dessus de la moyenne.' : 'Pas remplie : il faut remonter de <b>' + pct(C.F / C.cur - 1) + '</b> pour repasser au-dessus de ' + px(C.F) + '.') + '</p></div>' +
+        /* condition 2 : forte baisse */
+        '<div class="cond ' + (C.c2 ? 'yes' : 'no') + '"><div class="cond-t"><span class="ck">' + (C.c2 ? '✓' : '✗') + '</span><div><b>2. Forte baisse sur 2 jours</b><small>l\'indicateur de baisse (RSI 2 jours) doit passer sous 10</small></div></div>' +
+        rsiGauge(C.rsi) +
+        '<p class="cond-s">' + (C.c2 ? 'Remplie : indicateur à <b>' + nf(C.rsi, 0) + '</b>, sous 10.' : 'Pas encore : indicateur à <b>' + nf(C.rsi, 0) + '</b>. Il passerait sous 10 si le ' + o.I.name + ' finissait sous <b>' + px(a.X) + '</b> (' + pct(a.X / C.cur - 1) + ').') + '</p></div>' +
+        /* scenarios */
+        '<div class="cond-head"><b>Ce qui déclencherait l\'entrée</b></div><div class="scen">' +
+        '<div><span>Ce soir</span><b>' + (a.possible ? (C.cur < a.X ? 'Rester sous ' + px(a.X) + ' jusqu\'à la fin de journée' : 'Fin de journée sous ' + px(a.X) + ' (' + pct(a.X / C.cur - 1) + ')') : 'Impossible') + '</b><small>' +
+          (a.possible ? 'et au-dessus de ' + px(C.F) + '.' : a.P <= C.F ? 'l\'indice est sous sa moyenne 200 jours.' : 'il faudrait finir sous ' + px(a.X) + ', donc sous la moyenne 200 j (' + px(C.F) + ').') + '</small></div>' +
+        '<div><span>Sur 2 jours</span><b>' + (C.d2 !== null ? '2 baisses de ' + pct(-C.d2) + ' de suite' : '—') + '</b><small>' +
+          (C.d2 !== null ? 'indice vers ' + px(C.p2) + (C.p2ok ? ', toujours au-dessus de sa moyenne : entrée.' : ', mais sous sa moyenne : pas d\'entrée.') : '') + '</small></div>' +
+        '<div><span>Historique</span><b>' + (C.lastEntry ? 'Dernière entrée le ' + shortDay(C.lastEntry) : 'Aucune entrée récente') + '</b><small>' +
+          (C.lastEntry ? 'il y a ' + jours(a.last - C.lastEntry) + (C.gap ? ' · en moyenne une entrée tous les ' + C.gap + ' jours de Bourse' : '') : '') + '</small></div></div>';
       if (ok) {
-        html += decisionHtml(o) +
-          '<div class="tiles">' + tile('Niveau d\'entrée', px(a.X)) + tile('Dernière clôture', px(a.P)) + tile('Baisse nécessaire', pct(a.X / a.P - 1)) +
-          tile('Lots à acheter', nf(lt.lots, 2)) + tile('Montant', usd(lt.notional)) + tile('Stop', cfg.phase == 3 ? px(stop) : 'aucun') +
-          tile('Marge bloquée', margeTxt(lt.notional)) + tile('Levier max', '1:' + levMax()) + tile('Les 2 indices', margeTxt(2 * cfg.size * cfg.lev)) + '</div>' + inputBox(o) +
+        html += '<div class="cond-head"><b>L\'ordre à passer si la condition est remplie</b></div><div class="tiles">' + tile('Lots à acheter', nf(lt.lots, 2)) + tile('Montant', usd(lt.notional)) + tile('Stop', cfg.phase == 3 ? px(stop) : 'aucun') +
+          tile('Marge bloquée', margeTxt(lt.notional)) + tile('Levier max', '1:' + levMax()) + tile('Niveau d\'entrée', px(a.X)) + '</div>' + inputBox(o) +
           '<div class="act-line">' + BUY + ' MT5 → <b>' + o.I.sym + '</b> → Ordre au marché → <b>' + nf(lt.lots, 2) + ' lots</b> → <b>Buy</b></div>';
-      } else {
-        html += decisionHtml(o) +
-          '<div class="tiles">' + tile('Dernière clôture', px(a.P)) + (a.P > a.F ? tile('Niveau d\'entrée', px(a.X)) : '') + tile('Moyenne 200 jours', px(a.F)) + '</div>';
       }
-      k = o.k; chart = { k: k, from: IDX[k].c.length - 60, refs: ok ? [{ v: a.X, label: 'entrée ' + px(a.X), cls: 'ref-buy', tail: true }] : [] };
+      k = o.k; chart = { k: k, from: IDX[k].c.length - 90, sma: true, refs: a.possible ? [{ v: a.X, label: 'entrée ' + px(a.X), cls: 'ref-buy', tail: true }] : [] };
     } else if (type === 'cours' && plan(parts[1]).trade && plan(parts[1]).trade.orphan) {
       o = plan(parts[1]); var to = o.trade; k = o.k;
       html = '<div class="sh-head">' + BUY + '<div><h2>' + o.I.name + '</h2><small>' + o.I.sym + ' · ' + nf(to.lots, 2) + ' lots · noté au journal</small></div></div>' +
@@ -542,6 +581,7 @@
     $('sheet').hidden = false; document.body.classList.add('noscroll'); sheetId = id;
     if (!refresh) $('sheet').querySelector('.sheet').scrollTop = 0;
     var I2 = IDX[chart.k], to = chart.to || I2.days.length, xs = I2.days.slice(chart.from, to), ys = I2.c.slice(chart.from, to), series = [{ name: 'Prix de fin de journée', v: ys, c: '--s1' }];
+    if (chart.sma) series.push({ name: 'Moyenne 200 jours', v: A[chart.k].st.sma200.slice(chart.from, to), c: '--s2' });
     if (chart.exitLine) {
       var thr = xs.map(function (d, q) { var j = chart.from + q; return j > chart.entry ? (I2.c[j - 1] + I2.c[j - 2] + I2.c[j - 3] + I2.c[j - 4]) / 4 : NaN; });
       xs = xs.concat([session]); series[0].v = ys.concat([NaN]); series.push({ name: 'Niveau de sortie', v: thr.concat([chart.y]), c: '--s2' });
