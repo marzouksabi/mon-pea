@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 09/11 15:29';
+  var VERSION = 'version du 09/11 22:27';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -225,10 +225,19 @@
         if (live && live > a.Y) { o.step = 3; o.how = 'exit'; }
       }
     } else if (jt) {
-      o.tone = 'alert'; o.step = 2;
-      o.title = 'Un trade est ouvert alors que la règle n\'en a pas';
-      o.sub = 'Si c\'est un trade d\'entretien (contre l\'inactivité), sors-en et note la sortie dans le Journal.';
-      o.how = 'exit';
+      var lastT = a.st.trades.length ? a.st.trades[a.st.trades.length - 1] : null, ex = lastT && I.days[lastT[1]] >= dn(jt.d1) ? lastT : null;
+      var ctj = +cfg.ct[k] || 1, pxOut = ex ? I.c[ex[1]] : cur;
+      o.trade = { real: true, orphan: true, id: jt.id, d1: dn(jt.d1), p1: jt.p1, lots: jt.lots, fee: +jt.fee || 0, cur: pxOut, stop: null, hit: null,
+        exitDay: ex ? I.days[ex[1]] : null, deadline: ex ? I.days[ex[1]] : dn(jt.d1) };
+      o.trade.pnl = (pxOut - jt.p1) * jt.lots * ctj - o.trade.fee; o.trade.r = pxOut / jt.p1 - 1;
+      o.tone = 'act'; o.step = 3; o.how = 'exit';
+      if (ex) {
+        o.title = 'La règle est sortie le ' + longDay(I.days[ex[1]]) + ' à ' + px(pxOut);
+        o.sub = 'Ferme ton trade dans MT5, puis note la sortie avec le prix obtenu.';
+      } else {
+        o.title = 'Trade ouvert hors règle';
+        o.sub = 'Si c\'est un trade d\'entretien (contre l\'inactivité), ferme-le et note la sortie.';
+      }
     } else if (!a.possible) {
       o.title = 'Ce soir : rien à faire';
       o.sub = a.P <= a.F ? 'Le ' + I.name + ' est sous sa moyenne des 200 derniers jours : la règle attend qu\'il remonte avant de chercher une entrée.'
@@ -307,7 +316,7 @@
     var k = o.k, a = o.a, I = o.I, n = I.c.length, tr = o.trade;
     var res = tr && !tr.hit ? '<div class="stats"><div><span>Entré le</span><b>' + shortDay(tr.d1) + '</b></div><div><span>Prix d\'entrée</span><b>' + px(tr.p1) + '</b></div>' +
       '<div><span>Résultat</span><b class="' + (tr.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tr.pnl) + '</b></div><div><span>Sortie au plus tard</span><b>' + shortDay(tr.deadline) + '</b></div></div>'
-      : '<div class="stats"><div><span>Prix d\'hier soir</span><b>' + px(a.P) + '</b></div><div><span>Moyenne 200 jours</span><b>' + px(a.sma200) + '</b></div>' +
+      : '<div class="stats"><div><span>Dernière clôture</span><b>' + px(a.P) + '</b></div><div><span>Moyenne 200 jours</span><b>' + px(a.sma200) + '</b></div>' +
         '<div><span>Écart à la moyenne</span><b>' + pct(a.P / a.sma200 - 1) + '</b></div><div><span>Trade en cours</span><b>aucun</b></div></div>';
     $('idx-' + k).innerHTML = '<div class="head"><div><div class="name">' + I.name + '</div><div class="sym">' + I.sym + ' dans MT5</div></div></div>' +
       trackerHtml(o) + decisionHtml(o) + res +
@@ -386,6 +395,7 @@
   function zonesFor(o) {
     var a = o.a, tr = o.trade, Z = [], INF = Infinity;
     if (tr && tr.hit) return { zones: [{ v: 'STOP', c: 'z-no', cond: 'le stop a fermé le trade le ' + shortDay(tr.hit), lo: -INF, hi: INF }], fixed: true };
+    if (tr && tr.orphan) return { zones: [{ v: 'SORTIR', c: 'z-out', cond: tr.exitDay ? 'la règle est sortie le ' + shortDay(tr.exitDay) + ' à ' + px(tr.cur) : 'trade hors règle', lo: -INF, hi: INF }], fixed: true };
     if (tr) {
       if (a.forced) return { zones: [{ v: 'SORTIR', c: 'z-out', cond: 'dernier jour : sortir à 22 h, quel que soit le prix', lo: -INF, hi: INF }], fixed: true };
       Z.push({ v: 'SORTIR', c: 'z-out', cond: 'si le prix de 22 h finit au-dessus', lo: a.Y, hi: INF });
@@ -401,7 +411,7 @@
     return { zones: Z };
   }
   function ladder(o) {
-    var cur = o.np ? o.np.p : (o.trade ? o.trade.cur : o.a.P), src = o.np ? (o.np.live ? (o.np.delayed ? 'il y a ~15 min' : 'en direct') : 'maintenant') : 'hier soir', zz = zonesFor(o), Z = zz.zones, on = 0;
+    var cur = o.np ? o.np.p : (o.trade ? o.trade.cur : o.a.P), src = o.np ? (o.np.live ? (o.np.delayed ? 'il y a ~15 min' : 'en direct') : 'maintenant') : 'clôture ' + shortDay(o.a.last), zz = zonesFor(o), Z = zz.zones, on = 0;
     Z.forEach(function (z, i) { if (cur >= z.lo && cur < z.hi) on = i; });
     var html = '<div class="ladder">' + Z.map(function (z, i) {
       return (i > 0 ? '<div class="lb"><span>' + px(Z[i - 1].lo) + '</span></div>' : '') +
@@ -415,6 +425,7 @@
     var L = ladder(o), V = VERBS[L.verb], cl = closeUTC(session), now = Date.now(), dec = cl - 600000, today = session === parisToday();
     var when = !today ? 'Décision ' + longDay(session) + ' à ' + hm(dec) : now < dec ? 'Décision ce soir à ' + hm(dec) + ' · peut encore changer d\'ici là' : now < cl ? 'C\'est le moment : décide avant ' + hm(cl) : 'Journée terminée';
     if (L.fixed && L.verb !== 'SORTIR') when = today ? 'Ce soir' : cap(longDay(session));
+    if (o.trade && o.trade.orphan) when = 'À faire dès que possible, puis noter la sortie';
     return '<div class="decision ' + V[2] + '"><span class="dv">' + V[0] + ' ' + V[1].toUpperCase() + '</span><small>' + esc(when) + '</small></div>' + L.html;
   }
 
@@ -443,10 +454,13 @@
     var rows = '';
     if (otab === 'attente') {
       rows = att.map(function (o) {
-        var a = o.a, ok = o.tone === 'watch';
-        return '<button class="row" data-sheet="att:' + o.k + '">' + (ok ? BUY : '<span class="side none">—</span>') + '<span class="rm"><b>' + o.I.name + '</b><small>' +
-          (ok ? 'Entrée si prix &lt; ' + px(a.X) : (a.P <= a.F ? 'Sous la moyenne 200 j' : 'Baisse trop forte nécessaire')) + '</small></span>' +
-          '<span class="rr">' + verbChip(o) + (ok ? '<small>entrée si &lt; ' + px(a.X) + '</small>' : '') + '</span><span class="chev">›</span></button>';
+        var a = o.a, ok = o.tone === 'watch', cur = o.np ? o.np.p : a.P, src = o.np ? o.np.src : 'clôture du ' + shortDay(a.last), dist = a.X / cur - 1, need;
+        if (ok) need = cur < a.X ? '<b class="pos">dans la zone d\'entrée</b>' : 'il faut encore <b>' + pct(dist) + '</b>';
+        else need = a.P <= a.F ? 'prix sous la moyenne 200 j (' + px(a.F) + ')' : 'l\'entrée (' + px(a.X) + ') serait sous la moyenne 200 j';
+        var gauge = ok ? '<i class="mini"><i style="width:' + Math.max(4, Math.min(100, 100 * (1 - Math.max(0, dist * -1) / 0.05))) + '%"></i></i>' : '';
+        return '<button class="row" data-sheet="att:' + o.k + '">' + (ok ? BUY : '<span class="side none">—</span>') + '<span class="rm"><b>' + o.I.name + ' · ' + px(cur) + '</b><small>' + esc(src) +
+          (ok ? ' · entrée si fin &lt; ' + px(a.X) : '') + '</small><small>' + need + '</small>' + gauge + '</span>' +
+          '<span class="rr">' + verbChip(o) + '</span><span class="chev">›</span></button>';
       }).join('') || '<p class="empty">Les deux indices ont un trade en cours.</p>';
     } else if (otab === 'cours') {
       rows = cours.map(function (o) {
@@ -479,15 +493,25 @@
       html = '<div class="sh-head">' + (ok ? BUY : '<span class="side none">—</span>') + '<div><h2>' + o.I.name + '</h2><small>' + o.I.sym + ' · en attente d\'une entrée</small></div></div>';
       if (ok) {
         html += decisionHtml(o) +
-          '<div class="tiles">' + tile('Niveau d\'entrée', px(a.X)) + tile('Prix d\'hier soir', px(a.P)) + tile('Baisse nécessaire', pct(a.X / a.P - 1)) +
+          '<div class="tiles">' + tile('Niveau d\'entrée', px(a.X)) + tile('Dernière clôture', px(a.P)) + tile('Baisse nécessaire', pct(a.X / a.P - 1)) +
           tile('Lots à acheter', nf(lt.lots, 2)) + tile('Montant', usd(lt.notional)) + tile('Stop', cfg.phase == 3 ? px(stop) : 'aucun') +
           tile('Marge bloquée', margeTxt(lt.notional)) + tile('Levier max', '1:' + levMax()) + tile('Les 2 indices', margeTxt(2 * cfg.size * cfg.lev)) + '</div>' + inputBox(o) +
           '<div class="act-line">' + BUY + ' MT5 → <b>' + o.I.sym + '</b> → Ordre au marché → <b>' + nf(lt.lots, 2) + ' lots</b> → <b>Buy</b></div>';
       } else {
         html += decisionHtml(o) +
-          '<div class="tiles">' + tile('Prix d\'hier soir', px(a.P)) + (a.P > a.F ? tile('Niveau d\'entrée', px(a.X)) : '') + tile('Moyenne 200 jours', px(a.F)) + '</div>';
+          '<div class="tiles">' + tile('Dernière clôture', px(a.P)) + (a.P > a.F ? tile('Niveau d\'entrée', px(a.X)) : '') + tile('Moyenne 200 jours', px(a.F)) + '</div>';
       }
       k = o.k; chart = { k: k, from: IDX[k].c.length - 60, refs: ok ? [{ v: a.X, label: 'entrée ' + px(a.X), cls: 'ref-buy', tail: true }] : [] };
+    } else if (type === 'cours' && plan(parts[1]).trade && plan(parts[1]).trade.orphan) {
+      o = plan(parts[1]); var to = o.trade; k = o.k;
+      html = '<div class="sh-head">' + BUY + '<div><h2>' + o.I.name + '</h2><small>' + o.I.sym + ' · ' + nf(to.lots, 2) + ' lots · noté au journal</small></div></div>' +
+        '<div class="sh-pl ' + (to.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(to.pnl) + '<small>' + pct(to.pnl / cfg.size) + ' du compte</small></div>' + decisionHtml(o) +
+        '<div class="tiles">' + tile('Entrée', shortDay(to.d1) + ' · ' + px(to.p1)) + tile('Sortie de la règle', to.exitDay ? shortDay(to.exitDay) + ' · ' + px(to.cur) : '—') +
+        tile('Variation de l\'indice', pct(to.r), to.r >= 0 ? 'pos' : 'neg') + '</div>' +
+        '<button class="btn" data-closej="' + to.id + '">Noter la sortie dans le Journal</button>' +
+        '<div class="act-line" style="margin-top:10px"><span class="side out">SORTIR</span> MT5 → onglet Trade → <b>croix ×</b> sur ' + o.I.sym + ' (pas « Sell »)</div>';
+      var ei2 = IDX[k].days.findIndex(function (dd) { return dd >= to.d1; });
+      chart = { k: k, from: Math.max(0, ei2 - 5), refs: [{ v: to.p1, label: 'entrée ' + px(to.p1), cls: 'ref-buy' }].concat(to.exitDay ? [{ v: to.cur, label: 'sortie ' + px(to.cur), cls: 'ref-sell' }] : []) };
     } else if (type === 'cours') {
       o = plan(parts[1]); var tr = o.trade, a2 = o.a, last = o.I.days[o.I.days.length - 1], prog = Math.max(0, Math.min(1, (last - tr.d1) / Math.max(1, tr.deadline - tr.d1)));
       var exitNow = o.tone === 'act' || o.step === 3;
@@ -739,6 +763,10 @@
   document.querySelectorAll('.nav button').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.v); }); });
   document.addEventListener('click', function (ev) {
     var go = ev.target.closest('[data-go]'); if (go) { show(go.dataset.go); return; }
+    var cj = ev.target.closest('[data-closej]');
+    if (cj) { var tj = trades.filter(function (t) { return t.id === cj.dataset.closej; })[0], pj = tj && plan(tj.idx).trade;
+      if (tj) { closeSheet(); show('journal'); fillForm(Object.assign({}, tj, { d2: pj && pj.exitDay ? ds(pj.exitDay) : ds(parisToday()), p2: pj && pj.exitDay ? Math.round(pj.cur * 100) / 100 : '' }));
+        $('j-form-title').textContent = 'Noter la sortie (corrige le prix avec celui de MT5)'; $('j-p2').focus(); } return; }
     var ot = ev.target.closest('[data-otab]'); if (ot) { otab = ot.dataset.otab; store.set('otab', otab); renderOrdres(); return; }
     var sh = ev.target.closest('[data-sheet]'); if (sh) { openSheet(sh.dataset.sheet); return; }
     if (ev.target.closest('[data-close]')) { closeSheet(); return; }
@@ -872,7 +900,29 @@
   /* ---------- prix en direct ----------
      Avec une cle Finnhub (gratuite) : SPY et QQQ en temps reel, convertis en niveau d'indice
      (indice d'hier soir x variation du fonds depuis hier soir). Sans cle : indices officiels via TradingView, differes de 10-15 min. */
-  var LIVEQ = {}, fhKey = store.get('fhkey', ''), liveTimer = null, liveState = '';
+  var LIVEQ = {}, PROV = {}, fhKey = store.get('fhkey', ''), liveTimer = null, liveState = '';
+  /* jour de Bourse dont la seance est terminee depuis au moins 16 minutes (cloture officielle disponible meme en differe) */
+  function closedTodayNY() {
+    var today = dn(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()));
+    return isTrading(today) && Date.now() >= closeUTC(today) + 16 * 60000 ? today : null;
+  }
+  function applyProvisional() {
+    var changed = false;
+    Object.keys(PROV).forEach(function (k) {
+      var p = PROV[k], I = IDX[k];
+      if (!I.c || p.day <= I.days[I.days.length - 1]) return;
+      I.c = I.c.concat([p.c]); I.o = I.o.concat([p.o]); I.h = I.h.concat([p.h]); I.l = I.l.concat([p.l]); I.days = I.days.concat([p.day]); I.prov = p.day;
+      A[k] = analyze(k); changed = true;
+    });
+    return changed;
+  }
+  function fetchTodayClose(day) {
+    return fetch('https://scanner.tradingview.com/america/scan', { method: 'POST', body: JSON.stringify({ symbols: { tickers: ['SP:SPX', 'NASDAQ:NDX'] }, columns: ['close', 'open', 'high', 'low'] }) })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        (j.data || []).forEach(function (x) { var k = x.s === 'SP:SPX' ? 'spx' : 'ndx'; if (x.d[0] > 0) PROV[k] = { day: day, c: x.d[0], o: x.d[1] || x.d[0], h: Math.max(x.d[2] || 0, x.d[0]), l: Math.min(x.d[3] || x.d[0], x.d[0]) }; });
+        if (applyProvisional()) { stampText(); renderAll(); }
+      });
+  }
   function nySessionOpen() {
     var now = new Date(), p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hourCycle: 'h23', weekday: 'short' }).formatToParts(now);
     var g = function (t) { return (p.filter(function (x) { return x.type === t; })[0] || {}).value; };
@@ -884,7 +934,13 @@
   function pollLive() {
     if (!A.spx || document.visibilityState !== 'visible') return;
     var day = nySessionOpen();
-    if (day === null) { liveState = 'Bourse de New York fermée : prix d\'hier soir.'; renderLiveState(); return; }
+    if (day === null) {
+      var ct = closedTodayNY();
+      if (ct !== null && Math.max(A.spx.last, A.ndx.last) < ct) {
+        liveState = 'Séance terminée : clôture du jour récupérée en direct.'; renderLiveState(); fetchTodayClose(ct).catch(function () { /* nouvel essai au prochain passage */ });
+      } else { liveState = 'Bourse de New York fermée : prix de la dernière clôture.'; renderLiveState(); }
+      return;
+    }
     var done = function (msg) { liveState = msg; renderLiveState(); refreshLive(); };
     if (fhKey) {
       var get = function (sym) { return fetch('https://finnhub.io/api/v1/quote?symbol=' + sym + '&token=' + encodeURIComponent(fhKey)).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); };
@@ -911,6 +967,10 @@
     if (!$('v-bord').hidden) renderBord();
     if (!$('v-ordres').hidden && !typing) renderOrdres();
     if (!$('v-graph').hidden) renderGraph();
+  }
+  function stampText() {
+    var last = Math.max(A.spx.last, A.ndx.last), prov = IDX.spx.prov || IDX.ndx.prov;
+    $('stamp').textContent = 'Clôtures au ' + shortDay(last) + ' ' + new Date(last * DAY).getUTCFullYear() + (prov ? ' (récupérée en direct)' : '');
   }
   function renderLiveState() {
     var el = $('live-state'); if (el) el.textContent = liveState;
@@ -987,9 +1047,9 @@
       fetch('../data/live.json', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
     ]).then(function (res) {
       var D = res[0]; LIVE = res[1];
-      Object.keys(IDX).forEach(function (k) { var d = 0; IDX[k].c = D.idx[k].c; IDX[k].l = D.idx[k].l || D.idx[k].c; IDX[k].o = D.idx[k].o || D.idx[k].c; IDX[k].h = D.idx[k].h || D.idx[k].c; IDX[k].days = D.idx[k].d.map(function (x) { d += x; return d; }); A[k] = analyze(k); });
-      var lu = LIVE && LIVE.updated ? ' · relevé auto ' + hm(Date.parse(LIVE.updated)) : '';
-      $('stamp').textContent = 'Clôtures au ' + shortDay(Math.max(A.spx.last, A.ndx.last)) + ' ' + new Date(A.spx.last * DAY).getUTCFullYear() + lu;
+      Object.keys(IDX).forEach(function (k) { var d = 0; IDX[k].prov = null; IDX[k].c = D.idx[k].c; IDX[k].l = D.idx[k].l || D.idx[k].c; IDX[k].o = D.idx[k].o || D.idx[k].c; IDX[k].h = D.idx[k].h || D.idx[k].c; IDX[k].days = D.idx[k].d.map(function (x) { d += x; return d; }); A[k] = analyze(k); });
+      applyProvisional();
+      stampText();
       renderAll();
       if (!liveTimer) startLive();
     }).catch(function () { $('stamp').textContent = 'Cours indisponibles : vérifie ta connexion puis rouvre l\'application.'; });

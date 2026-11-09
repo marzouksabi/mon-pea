@@ -384,3 +384,7 @@ body.noscroll{overflow:hidden}
 .live-dot.on{background:var(--good);box-shadow:0 0 0 3px var(--good-soft);animation:pulse 2s infinite}
 .live-dot.slow{background:var(--warn)}
 @keyframes pulse{50%{box-shadow:0 0 0 6px transparent}}
+
+/* champs du journal : la valeur garde toute la place disponible */
+.pair .field span{flex:none}
+.pair .field input{flex:1;width:auto;min-width:0}
