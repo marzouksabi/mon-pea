@@ -378,3 +378,9 @@ body.noscroll{overflow:hidden}
 @media (min-width:900px){.tv{height:calc(100dvh - 240px)}}
 
 .g-top{flex-wrap:wrap}
+
+/* voyant du flux de prix : vert = direct, orange = differe, gris = marche ferme */
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ink-3);margin-right:6px;vertical-align:1px}
+.live-dot.on{background:var(--good);box-shadow:0 0 0 3px var(--good-soft);animation:pulse 2s infinite}
+.live-dot.slow{background:var(--warn)}
+@keyframes pulse{50%{box-shadow:0 0 0 6px transparent}}

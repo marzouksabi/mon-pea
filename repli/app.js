@@ -41,7 +41,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date())); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 08/11 14:32';
+  var VERSION = 'version du 09/11 15:29';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -92,6 +92,8 @@
   function nowPrice(k, session) {
     var m = manual[k];
     if (m && m.day === session && m.p > 0) return { p: m.p, src: 'MT5 (saisi)' };
+    var Q = LIVEQ[k];
+    if (Q && Q.day === session && Date.now() - Q.at < 30 * 60000) return { p: Q.p, src: Q.src, auto: true, live: true, delayed: Q.delayed };
     var L = LIVE && LIVE[k];
     if (L && L.t) {
       var age = Date.now() - L.t * 1000, nyDay = dn(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(L.t * 1000)));
@@ -399,7 +401,7 @@
     return { zones: Z };
   }
   function ladder(o) {
-    var cur = o.np ? o.np.p : (o.trade ? o.trade.cur : o.a.P), src = o.np ? 'maintenant' : 'hier soir', zz = zonesFor(o), Z = zz.zones, on = 0;
+    var cur = o.np ? o.np.p : (o.trade ? o.trade.cur : o.a.P), src = o.np ? (o.np.live ? (o.np.delayed ? 'il y a ~15 min' : 'en direct') : 'maintenant') : 'hier soir', zz = zonesFor(o), Z = zz.zones, on = 0;
     Z.forEach(function (z, i) { if (cur >= z.lo && cur < z.hi) on = i; });
     var html = '<div class="ladder">' + Z.map(function (z, i) {
       return (i > 0 ? '<div class="lb"><span>' + px(Z[i - 1].lo) + '</span></div>' : '') +
@@ -866,6 +868,60 @@
     b = ev.target.closest('[data-gmode]'); if (b) { gmode = b.dataset.gmode; store.set('gmode', gmode); renderGraph(); }
   });
 
+
+  /* ---------- prix en direct ----------
+     Avec une cle Finnhub (gratuite) : SPY et QQQ en temps reel, convertis en niveau d'indice
+     (indice d'hier soir x variation du fonds depuis hier soir). Sans cle : indices officiels via TradingView, differes de 10-15 min. */
+  var LIVEQ = {}, fhKey = store.get('fhkey', ''), liveTimer = null, liveState = '';
+  function nySessionOpen() {
+    var now = new Date(), p = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: 'numeric', hourCycle: 'h23', weekday: 'short' }).formatToParts(now);
+    var g = function (t) { return (p.filter(function (x) { return x.type === t; })[0] || {}).value; };
+    var mins = +g('hour') * 60 + +g('minute'), wd = g('weekday'), today = dn(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now));
+    if (wd === 'Sat' || wd === 'Sun' || !isTrading(today)) return null;
+    var close = EARLY.indexOf(ds(today)) >= 0 ? 13 * 60 : 16 * 60;
+    return mins >= 9 * 60 + 30 && mins <= close + 5 ? today : null;
+  }
+  function pollLive() {
+    if (!A.spx || document.visibilityState !== 'visible') return;
+    var day = nySessionOpen();
+    if (day === null) { liveState = 'Bourse de New York fermée : prix d\'hier soir.'; renderLiveState(); return; }
+    var done = function (msg) { liveState = msg; renderLiveState(); refreshLive(); };
+    if (fhKey) {
+      var get = function (sym) { return fetch('https://finnhub.io/api/v1/quote?symbol=' + sym + '&token=' + encodeURIComponent(fhKey)).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); };
+      Promise.all([get('SPY'), get('QQQ')]).then(function (q) {
+        [['spx', q[0]], ['ndx', q[1]]].forEach(function (x) {
+          var k = x[0], v = x[1];
+          if (v && v.c > 0 && v.pc > 0) LIVEQ[k] = { p: A[k].P * v.c / v.pc, at: Date.now(), day: day, src: 'en direct ' + hm(Date.now()), delayed: false };
+        });
+        done('Prix en direct (Finnhub), mis à jour toutes les 20 secondes.');
+      }).catch(function () { fhKey = ''; done('Clé Finnhub refusée : passage aux prix différés.'); });
+    } else {
+      fetch('https://scanner.tradingview.com/america/scan', { method: 'POST', body: JSON.stringify({ symbols: { tickers: ['SP:SPX', 'NASDAQ:NDX'] }, columns: ['close', 'update_mode'] }) })
+        .then(function (r) { return r.json(); }).then(function (j) {
+          (j.data || []).forEach(function (x) {
+            var k = x.s === 'SP:SPX' ? 'spx' : 'ndx', delay = /(\d+)$/.exec(x.d[1] || '');
+            LIVEQ[k] = { p: x.d[0], at: Date.now(), day: day, src: 'différé ' + (delay ? Math.round(delay[1] / 60) : 15) + ' min', delayed: true };
+          });
+          done('Prix différés de 10 à 15 minutes. Ajoute une clé Finnhub gratuite (Compte) pour le temps réel.');
+        }).catch(function () { done('Prix du moment indisponibles : vérifie ta connexion.'); });
+    }
+  }
+  function refreshLive() {
+    var typing = document.activeElement && document.activeElement.tagName === 'INPUT';
+    if (!$('v-bord').hidden) renderBord();
+    if (!$('v-ordres').hidden && !typing) renderOrdres();
+    if (!$('v-graph').hidden) renderGraph();
+  }
+  function renderLiveState() {
+    var el = $('live-state'); if (el) el.textContent = liveState;
+    var dot = $('live-dot'); if (dot) dot.className = 'live-dot' + (nySessionOpen() !== null ? (fhKey ? ' on' : ' slow') : '');
+  }
+  function startLive() { clearInterval(liveTimer); pollLive(); liveTimer = setInterval(pollLive, fhKey ? 20000 : 60000); }
+  $('fh-save').addEventListener('click', function () {
+    fhKey = $('fh-key').value.trim(); store.set('fhkey', fhKey); startLive();
+  });
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') pollLive(); });
+
   /* ---------- theme clair / sombre ---------- */
   function isDark() {
     var t = document.documentElement.dataset.theme;
@@ -921,6 +977,7 @@
 
   /* ---------- demarrage ---------- */
   $('app-ver').textContent = 'Application Repli, ' + VERSION + '.';
+  $('fh-key').value = fhKey;
   loadCfg(); fillForm(null); show(store.get('tab', 'bord'));
   var tr; window.addEventListener('resize', function () { clearTimeout(tr); tr = setTimeout(renderAll, 200); });
 
@@ -934,6 +991,7 @@
       var lu = LIVE && LIVE.updated ? ' · relevé auto ' + hm(Date.parse(LIVE.updated)) : '';
       $('stamp').textContent = 'Clôtures au ' + shortDay(Math.max(A.spx.last, A.ndx.last)) + ' ' + new Date(A.spx.last * DAY).getUTCFullYear() + lu;
       renderAll();
+      if (!liveTimer) startLive();
     }).catch(function () { $('stamp').textContent = 'Cours indisponibles : vérifie ta connexion puis rouvre l\'application.'; });
   }
   load();

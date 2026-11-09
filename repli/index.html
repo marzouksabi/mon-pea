@@ -35,7 +35,7 @@
         <h1 id="title">Accueil</h1>
       </div>
       <div class="top-right">
-        <p class="stamp" id="stamp">Chargement des cours…</p>
+        <p class="stamp"><span class="live-dot" id="live-dot"></span><span id="stamp">Chargement des cours…</span></p>
         <button class="theme-btn" id="theme-btn" type="button" aria-label="Changer de thème">
           <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
           <svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
@@ -109,6 +109,13 @@
             <label class="field"><span>Pas de volume (lots)</span><input id="c-step" type="number" inputmode="decimal" step="any"></label>
             <p class="muted">À lire dans MT5 : clic droit sur le symbole → Spécification → « Taille du contrat » et « Pas du volume ».</p>
           </details>
+        </article>
+        <article class="card s12" id="live-card">
+          <h2>Prix en direct</h2>
+          <p class="muted" id="live-state" style="margin:0 0 10px">—</p>
+          <label class="field"><span>Clé Finnhub (gratuite)</span><input id="fh-key" type="text" autocomplete="off" spellcheck="false" placeholder="colle ta clé ici"></label>
+          <button class="btn" id="fh-save" style="max-width:340px">Enregistrer la clé</button>
+          <p class="muted">Crée un compte gratuit sur finnhub.io, copie ta clé « API key » et colle-la ici. Elle reste sur cet appareil.</p>
         </article>
         <article class="card s12" id="notif-card">
           <h2>Notifications du soir</h2>
