@@ -23,9 +23,48 @@ from zoneinfo import ZoneInfo
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NY, PARIS = ZoneInfo('America/New_York'), ZoneInfo('Europe/Paris')
-HOLIDAYS = {'2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25', '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25',
-            '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31', '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24'}
-EARLY = {'2026-11-27', '2026-12-24', '2027-11-26'}
+def _nyse_calendar(y0=2025, y1=2045):
+    """Jours fériés et fermetures à 13 h de la Bourse de New York, d'après les règles du NYSE."""
+    def wd(y, m, d):
+        return dt.date(y, m, d).weekday()            # lundi = 0 ... dimanche = 6
+
+    def nth(y, m, w, n):                             # n-ième jour w (lundi = 0) du mois
+        first = dt.date(y, m, 1)
+        return first + dt.timedelta(days=(w - first.weekday()) % 7 + 7 * (n - 1))
+
+    def last_monday(y, m):
+        d = dt.date(y, m + 1, 1) - dt.timedelta(days=1)
+        return d - dt.timedelta(days=d.weekday())
+
+    def observed(y, m, d):
+        x = dt.date(y, m, d)
+        return x - dt.timedelta(days=1) if x.weekday() == 5 else x + dt.timedelta(days=1) if x.weekday() == 6 else x
+
+    def easter(y):
+        a, b, c = y % 19, y // 100, y % 100
+        d, e, f = b // 4, b % 4, (b + 8) // 25
+        g = (b - f + 1) // 3
+        h = (19 * a + b - d - g + 15) % 30
+        i, k = c // 4, c % 4
+        l = (32 + 2 * e + 2 * i - h - k) % 7
+        m = (a + 11 * h + 22 * l) // 451
+        return dt.date(y, (h + l - 7 * m + 114) // 31, (h + l - 7 * m + 114) % 31 + 1)
+
+    hol, early = set(), set()
+    for y in range(y0, y1 + 1):
+        if wd(y, 1, 1) != 5:                         # 1er janvier un samedi : pas de report au vendredi
+            hol.add(observed(y, 1, 1))
+        hol.update({nth(y, 1, 0, 3), nth(y, 2, 0, 3), easter(y) - dt.timedelta(days=2), last_monday(y, 5),
+                    observed(y, 6, 19), observed(y, 7, 4), nth(y, 9, 0, 1), nth(y, 11, 3, 4), observed(y, 12, 25)})
+        if 1 <= wd(y, 7, 4) <= 4:                    # veille du 4 juillet (du lundi au jeudi)
+            early.add(dt.date(y, 7, 3))
+        early.add(nth(y, 11, 3, 4) + dt.timedelta(days=1))   # lendemain de Thanksgiving
+        if wd(y, 12, 24) <= 3:                       # veille de Noël (du lundi au jeudi)
+            early.add(dt.date(y, 12, 24))
+    return {d.isoformat() for d in hol}, {d.isoformat() for d in early}
+
+
+HOLIDAYS, EARLY = _nyse_calendar()
 NAMES = {'spx': ('S&P 500', '%5EGSPC'), 'ndx': ('Nasdaq-100', '%5ENDX')}
 UA = {'User-Agent': 'Mozilla/5.0 (pea-app notifications)'}
 FORCE = os.environ.get('FORCE', '').strip().lower() in ('oui', 'yes', 'true', '1')

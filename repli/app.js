@@ -24,9 +24,29 @@
   };
 
   /* ---------- calendrier de la Bourse de New York ---------- */
-  var HOLIDAYS = ['2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25', '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25',
-    '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31', '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24'];
-  var EARLY = ['2026-11-27', '2026-12-24', '2027-11-26'];           // fermeture a 13 h (New York)
+  /* jours feries et fermetures a 13 h de la Bourse de New York, calcules d'apres les regles du NYSE (2025 a 2045) */
+  var HOLIDAYS = [], EARLY = [];
+  (function () {
+    var iso = function (t) { return new Date(t).toISOString().slice(0, 10); };
+    var U = function (y, m, d) { return Date.UTC(y, m - 1, d); };
+    var wd = function (y, m, d) { return new Date(U(y, m, d)).getUTCDay(); };                 // dimanche = 0
+    var nth = function (y, m, w, n) { return U(y, m, 1 + (w - wd(y, m, 1) + 7) % 7 + 7 * (n - 1)); };
+    var lastMon = function (y, m) { var t = U(y, m + 1, 0); return t - ((new Date(t).getUTCDay() + 6) % 7) * DAY; };
+    var obs = function (y, m, d) { var w = wd(y, m, d); return U(y, m, d) + (w === 6 ? -DAY : w === 0 ? DAY : 0); };
+    var easter = function (y) {
+      var a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+      var h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+      return U(y, Math.floor((h + l - 7 * m + 114) / 31), (h + l - 7 * m + 114) % 31 + 1);
+    };
+    for (var y = 2025; y <= 2045; y++) {
+      if (wd(y, 1, 1) !== 6) HOLIDAYS.push(iso(obs(y, 1, 1)));                                  // 1er janvier un samedi : pas de report
+      [nth(y, 1, 1, 3), nth(y, 2, 1, 3), easter(y) - 2 * DAY, lastMon(y, 5), obs(y, 6, 19), obs(y, 7, 4), nth(y, 9, 1, 1), nth(y, 11, 4, 4), obs(y, 12, 25)]
+        .forEach(function (t) { HOLIDAYS.push(iso(t)); });
+      if (wd(y, 7, 4) >= 2 && wd(y, 7, 4) <= 5) EARLY.push(iso(U(y, 7, 3)));                    // veille du 4 juillet
+      EARLY.push(iso(nth(y, 11, 4, 4) + DAY));                                                   // lendemain de Thanksgiving
+      if (wd(y, 12, 24) >= 1 && wd(y, 12, 24) <= 4) EARLY.push(iso(U(y, 12, 24)));              // veille de Noel
+    }
+  })();
   var isTrading = function (d) { var w = new Date(d * DAY).getUTCDay(); return w > 0 && w < 6 && HOLIDAYS.indexOf(ds(d)) < 0; };
   var nextTrading = function (d) { d++; while (!isTrading(d)) d++; return d; };
   var nyHour = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hourCycle: 'h23' });
@@ -38,11 +58,11 @@
     return d * DAY + 21 * 3600000;
   }
   var hm = function (t) { return parisHM.format(new Date(t)).replace(':', ' h '); };
-  var qaShift = 0, nowMs = function () { return Date.now() + qaShift; };   // decalage d'horloge : seulement en mode test (?qa)
+  var qaShift = 0, qaFreeze = false, nowMs = function () { return Date.now() + qaShift; };   // decalage d'horloge : seulement en mode test (?qa)
   var parisToday = function () { return dn(parisYMD.format(new Date(nowMs()))); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 09/11 23:10';
+  var VERSION = 'version du 09/11 23:36';
   var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -626,8 +646,8 @@
         cards = V.map(function (v) { return cardVerdict(v, m); });
       } else {
         ph = m.ph === 'retard' ? ['', 'Mise à jour'] : m.ph === 'loin' ? ['', 'Bourse fermée'] : ['', 'Ce soir'];
-        big = m.ph === 'retard' ? 'Clôture en route' : 'Verdict dans ' + dur(m.dec - m.now);
-        sub = m.ph === 'retard' ? 'La clôture du ' + longDay(session) + ' arrive : rouvre l\'appli dans quelques minutes.'
+        big = m.ph === 'retard' ? 'Données en retard' : 'Verdict dans ' + dur(m.dec - m.now);
+        sub = m.ph === 'retard' ? 'Il manque la clôture du ' + longDay(session) + ' : pas de verdict sans elle. Rouvre l\'appli dans quelques minutes ; si ça dure, la mise à jour automatique est en panne.'
           : acts.length ? 'À faire ' + when + ' à ' + hm(m.dec) + ' : ' + acts.map(function (v) { return v.verb === 'STOP' ? 'noter la sortie du ' + v.o.I.name : 'sortir du ' + v.o.I.name; }).join(' et ') + '.'
           : !open.length ? 'Rien ne peut se passer ' + when + ' : pas besoin de revenir.'
           : 'À surveiller ' + when + ' : ' + names(open) + '. Reviens à ' + hm(m.dec) + '.';
@@ -1106,25 +1126,43 @@
      Avec une cle Finnhub (gratuite) : SPY et QQQ en temps reel, convertis en niveau d'indice
      (indice d'hier soir x variation du fonds depuis hier soir). Sans cle : indices officiels via TradingView, differes de 10-15 min. */
   var LIVEQ = {}, PROV = {}, fhKey = store.get('fhkey', ''), liveTimer = null, liveState = '';
-  /* jour de Bourse dont la seance est terminee depuis au moins 16 minutes (cloture officielle disponible meme en differe) */
-  function closedTodayNY() {
-    var today = dn(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()));
-    return isTrading(today) && Date.now() >= closeUTC(today) + 16 * 60000 ? today : null;
-  }
+  /* clotures recuperees en direct, collees a la suite des donnees du serveur seulement si les jours se suivent
+     (PROV[k][jour] = barre) : la regle reste juste meme si la mise a jour du serveur a 1 ou 2 jours de retard */
   function applyProvisional() {
     var changed = false;
     Object.keys(PROV).forEach(function (k) {
-      var p = PROV[k], I = IDX[k];
-      if (!I.c || p.day <= I.days[I.days.length - 1]) return;
-      I.c = I.c.concat([p.c]); I.o = I.o.concat([p.o]); I.h = I.h.concat([p.h]); I.l = I.l.concat([p.l]); I.days = I.days.concat([p.day]); I.prov = p.day;
-      A[k] = analyze(k); changed = true;
+      var I = IDX[k], add = false, d, p;
+      if (!I.c) return;
+      while ((p = PROV[k][d = nextTrading(I.days[I.days.length - 1])])) {
+        I.c = I.c.concat([p.c]); I.o = I.o.concat([p.o]); I.h = I.h.concat([p.h]); I.l = I.l.concat([p.l]); I.days = I.days.concat([d]); I.prov = d; add = true;
+      }
+      if (add) { A[k] = analyze(k); changed = true; }
     });
     return changed;
   }
-  function fetchTodayClose(day) {
-    return fetch('https://scanner.tradingview.com/america/scan', { method: 'POST', body: JSON.stringify({ symbols: { tickers: ['SP:SPX', 'NASDAQ:NDX'] }, columns: ['close', 'open', 'high', 'low'] }) })
+  var nyDayOf = function (t) { return dn(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t))); };
+  var prevTrading = function (d) { d--; while (!isTrading(d)) d--; return d; };
+  /* dernier jour de Bourse dont la cloture officielle est disponible (seance finie depuis au moins 16 minutes) */
+  function lastClosedDay() { var t = Date.now(), d = nyDayOf(t); return isTrading(d) && t >= closeUTC(d) + 16 * 60000 ? d : prevTrading(d); }
+  var HCOLS = [];
+  for (var hq = 0; hq <= 2; hq++) ['close', 'open', 'high', 'low'].forEach(function (f) { HCOLS.push(f + '[' + hq + ']'); });
+  /* lit les 3 dernieres barres quotidiennes (TradingView), retrouve celle qui correspond a la derniere cloture connue
+     et garde les suivantes qui sont terminees */
+  function fetchMissing() {
+    return fetch('https://scanner.tradingview.com/america/scan', { method: 'POST', body: JSON.stringify({ symbols: { tickers: ['SP:SPX', 'NASDAQ:NDX'] }, columns: HCOLS }) })
       .then(function (r) { return r.json(); }).then(function (j) {
-        (j.data || []).forEach(function (x) { var k = x.s === 'SP:SPX' ? 'spx' : 'ndx'; if (x.d[0] > 0) PROV[k] = { day: day, c: x.d[0], o: x.d[1] || x.d[0], h: Math.max(x.d[2] || 0, x.d[0]), l: Math.min(x.d[3] || x.d[0], x.d[0]) }; });
+        var upto = lastClosedDay();
+        (j.data || []).forEach(function (x) {
+          var k = x.s === 'SP:SPX' ? 'spx' : 'ndx', I = IDX[k], lastC = I.c[I.c.length - 1], m = -1, i, d;
+          var bar = function (q) { var v = x.d.slice(q * 4, q * 4 + 4); return v[0] > 0 ? { c: v[0], o: v[1] || v[0], h: Math.max(v[2] || 0, v[0]), l: Math.min(v[3] || v[0], v[0]) } : null; };
+          for (i = 0; i <= 2 && m < 0; i++) { var b0 = bar(i); if (b0 && Math.abs(b0.c - lastC) < 0.03) m = i; }
+          for (i = m - 1, d = I.days[I.days.length - 1]; i >= 0; i--) {
+            d = nextTrading(d);
+            var b = bar(i);
+            if (d > upto || !b) break;                                // barre du jour pas encore terminee
+            PROV[k] = PROV[k] || {}; PROV[k][d] = b;
+          }
+        });
         if (applyProvisional()) { stampText(); renderAll(); }
       });
   }
@@ -1138,14 +1176,9 @@
   }
   function pollLive() {
     if (!A.spx || document.visibilityState !== 'visible') return;
+    if (!qaFreeze && Math.min(A.spx.last, A.ndx.last) < lastClosedDay()) fetchMissing().catch(function () { /* nouvel essai au prochain passage */ });
     var day = nySessionOpen();
-    if (day === null) {
-      var ct = closedTodayNY();
-      if (ct !== null && Math.max(A.spx.last, A.ndx.last) < ct) {
-        liveState = 'Séance terminée : clôture du jour récupérée en direct.'; renderLiveState(); fetchTodayClose(ct).catch(function () { /* nouvel essai au prochain passage */ });
-      } else { liveState = 'Bourse de New York fermée : prix de la dernière clôture.'; renderLiveState(); }
-      return;
-    }
+    if (day === null) { liveState = 'Bourse de New York fermée : prix de la dernière clôture.'; renderLiveState(); return; }
     var done = function (msg) { liveState = msg; renderLiveState(); refreshLive(); };
     if (fhKey) {
       var get = function (sym) { return fetch('https://finnhub.io/api/v1/quote?symbol=' + sym + '&token=' + encodeURIComponent(fhKey)).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); };
@@ -1192,11 +1225,12 @@
   /* ---------- mode de test (adresse terminee par ?qa) : simuler un prix pour verifier chaque situation ---------- */
   if (/[?&]qa(&|$)/.test(location.search)) window.__qa = {
     A: A, IDX: IDX, plan: plan, ladder: ladder,
-    jusqua: function (iso) { var lim = dn(iso); PROV = {}; clearInterval(liveTimer); liveTimer = 1; Object.keys(IDX).forEach(function (k) { var I = IDX[k], n = I.days.filter(function (d) { return d <= lim; }).length;
+    jusqua: function (iso) { var lim = dn(iso); PROV = {}; qaFreeze = true; clearInterval(liveTimer); liveTimer = 1; Object.keys(IDX).forEach(function (k) { var I = IDX[k], n = I.days.filter(function (d) { return d <= lim; }).length;
       ['c', 'o', 'h', 'l', 'days'].forEach(function (f) { I[f] = I[f].slice(0, n); }); A[k] = analyze(k); }); LIVEQ = {}; renderAll(); return session; },
     prix: function (k, p, retardMin) { var d = retardMin || 0; LIVEQ[k] = { p: p, at: nowMs(), t: nowMs() - d * 60000, day: session, src: d ? 'différé ' + d + ' min' : 'test', delayed: d > 0 }; refreshLive(); return ladder(plan(k)).verb; },
     heure: function (iso) { qaShift = iso ? Date.parse(iso) - Date.now() : 0; renderAll(); return moment().ph; },
-    moment: function () { return moment(); }
+    moment: function () { return moment(); },
+    rattrape: function () { return fetchMissing().then(function () { return [ds(A.spx.last), ds(A.ndx.last), A.ndx.mode]; }); }
   };
 
   /* ---------- theme clair / sombre ---------- */
@@ -1259,6 +1293,7 @@
   var tr; window.addEventListener('resize', function () { clearTimeout(tr); tr = setTimeout(renderAll, 200); });
 
   function load() {
+    if (qaFreeze) return Promise.resolve();                         // mode test : donnees figees
     return Promise.all([
       fetch('../data/market.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }),
       fetch('../data/live.json', { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; })
