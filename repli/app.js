@@ -78,7 +78,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date(nowMs()))); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 11/11 19:45';
+  var VERSION = 'version du 11/11 19:57';
   var DEF = { size: 50000, lev: 0.5, dose: true, phase: 1, start: '', bal: '', ct: { spx: 10, ndx: 10 }, step: 0.01 };   // dose : taille dosee par la volatilite (base 0,75 x)   // FundedNext : 1 lot d'indice = 10 fois l'indice
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -930,7 +930,7 @@
         else if (a.ph === 2 && a.bal >= size * 1.05) { ev.push([d, 'Phase 2 réussie : compte financé', 'ok']); a.ph = 3; a.bal = size; a.since = d; a.due = d + 21; }
         else if (a.ph === 3 && d >= a.due) {
           a.due = d + 14;
-          if (a.bal > size) { var amt = 0.8 * (a.bal - size) + (a.ref ? 0 : fee); paid += amt; ev.push([d, 'Paiement ' + usd(amt) + (a.ref ? '' : ' (prix du compte remboursé)'), 'ok']); a.ref = true; a.bal = size; }
+          if (a.bal > size) { var amt = 0.8 * (a.bal - size) + (a.ref ? 0 : fee); paid += amt; ev.push([d, 'Paiement ' + usd(amt) + (a.ref ? '' : ' (prix du compte remboursé)'), 'ok', amt]); a.ref = true; a.bal = size; }
         }
       }
       curve.push([d, paid - fees + (a.bal - size)]);
@@ -958,7 +958,7 @@
     if (o.xl) o.xl.forEach(function (p) { g += '<text class="ax" x="' + (L + slot * p[0] + slot / 2) + '" y="' + (H - 6) + '" text-anchor="middle">' + esc(p[1]) + '</text>'; });
     g += '<rect class="bar-hit" x="' + L + '" y="0" width="' + (W - L - R) + '" height="' + H + '"/>';
     el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(o.label) + '">' + g + '</svg><div class="tip" hidden></div>' +
-      '<div class="legend"><span><i style="background:var(--s1);height:8px"></i>Gain</span><span><i style="background:var(--s2);height:8px"></i>Perte</span></div>';
+      '<div class="legend"><span><i style="background:var(--good);height:8px"></i>Gain</span><span><i style="background:var(--crit);height:8px"></i>Perte</span></div>';
     var svg = el.querySelector('svg'), tip = el.querySelector('.tip'), hls = el.querySelectorAll('.bar-hl');
     function move(ev) {
       var rc = svg.getBoundingClientRect(), sx = (ev.clientX - rc.left) * W / rc.width, i = Math.floor((sx - L) / slot);
@@ -971,65 +971,185 @@
     svg.addEventListener('pointerleave', function () { tip.hidden = true; hls.forEach(function (h) { h.style.opacity = 0; }); });
   }
 
-  function renderBilan() {
-    var sel = $('b-year'), lastDay = Math.max(A.spx.last, A.ndx.last), lastY = new Date(lastDay * DAY).getUTCFullYear(), firstY = new Date(IDX.spx.days[0] * DAY).getUTCFullYear() + 1;
-    if (!sel.options.length) {
-      for (var y = lastY; y >= Math.max(firstY, 2023); y--) sel.add(new Option(y === lastY ? y + ' · en cours' : String(y), y));
-      sel.value = String(store.get('year', lastY)); if (!sel.value) sel.value = String(lastY);
-    }
-    var Y0 = +sel.value, s0 = dn(Y0 + '-01-01') - 1, e0 = Math.min(lastDay, dn(Y0 + '-12-31')), size = +cfg.size;
-    $('b-conf').textContent = 'Compte FundedNext Stellar 2-Step de ' + usd(size) + ', ' + (cfg.dose ? 'taille dosée selon l’agitation du marché (0,375 à 1,5 × par indice)' : nf(cfg.lev, 2) + ' × par indice') + ', du 2 janvier au ' +
-      (e0 === lastDay ? shortDay(lastDay) + ' (dernière clôture)' : '31 décembre') + '. Change la taille dans Compte.';
-
-    /* trades de l'annee (sans stop : performance brute de la regle) */
-    var T = legs(false).filter(function (t) { return t.e > s0 && t.e <= e0; }).sort(function (a, b) { return a.e - b.e; });
-    var closed = T.filter(function (t) { return !t.open; }), win = 0, sumG = 0, sumN = 0, dur = 0, best = -1, worst = 1;
-    closed.forEach(function (t) { if (t.net > 0) win++; sumG += t.gross; sumN += t.net; dur += t.x - t.e; best = Math.max(best, t.net); worst = Math.min(worst, t.net); });
-
-    /* courbe : performance cumulee en % du compte (jour par jour, frais compris) */
-    var bd = byDay(T), days = IDX.spx.days.filter(function (d) { return d > s0 && d <= e0; }), cum = 0, peak = 0, mdd = 0, xs = [], ys = [];
-    days.forEach(function (d) { (bd[d] || []).forEach(function (x) { cum += x.lev * x.r; }); peak = Math.max(peak, cum); mdd = Math.min(mdd, cum - peak); xs.push(d); ys.push(cum * 100); });
-    var sim = simAccount(s0, e0), net = sim.paid - sim.fees;
-
-    $('b-kpis').innerHTML = [
-      ['Trades', closed.length + (T.length > closed.length ? ' + 1 ouvert' : ''), ''],
-      ['Gagnants', closed.length ? Math.round(win / closed.length * 100) + ' %' : '—', ''],
-      ['Gain moyen', closed.length ? pct(sumN / closed.length, 2) : '—', 'par trade, indice'],
-      ['Durée moyenne', closed.length ? nf(dur / closed.length, 1) + ' jours' : '—', ''],
-      ['Performance', pct(cum, 1), cfg.dose ? 'du compte, taille dosée (moy. ' + levTxt(T.length ? T.reduce(function (s2, t) { return s2 + t.lev; }, 0) / T.length : BASE) + ')' : 'du compte à ' + nf(cfg.lev, 2) + ' ×'],
-      ['Pire recul', pct(mdd, 1), 'du compte'],
-      ['Comptes cramés', String(sim.blown), sim.blown ? 'remplacés aussitôt' : ''],
-      ['Bilan FundedNext', sUsd(net), 'paiements − frais']
-    ].map(function (k) { return '<div><span>' + k[0] + '</span><b>' + k[1] + '</b>' + (k[2] ? '<small>' + k[2] + '</small>' : '') + '</div>'; }).join('');
-
-    $('b-perf-sub').textContent = 'Gain cumulé en % du compte, frais de nuit et spread estimés compris, sans stop.';
-    if (xs.length >= 2) lineChart($('b-perf'), { x: xs, series: [{ name: 'Performance', v: ys, c: '--s1' }], height: 210, label: 'Performance cumulée de la règle en ' + Y0, fmt: function (v) { return nf(v, 1) + ' %'; } });
-    else $('b-perf').innerHTML = '<p class="empty">Pas encore assez de données.</p>';
-
-    var st = sim.a, now = st.ph < 3 ? 'Compte ' + st.n + ' en phase ' + st.ph + ', ' + pct((st.bal - size) / size) + ' sur l\'étape' : 'Compte ' + st.n + ' financé, ' + usd(st.bal - size) + ' de gain en cours';
-    $('b-acct').innerHTML = '<h2>Compte FundedNext simulé</h2><div class="signal" style="margin-top:0">' + sUsd(net) + '<small>' + usd(sim.paid) + ' de paiements, ' + usd(sim.fees, 0) + ' de frais. ' + esc(now) + '.</small></div>' +
-      '<ul class="timeline">' + sim.ev.map(function (e) { return '<li><time>' + shortDay(e[0]) + '</time><span class="' + e[2] + '">' + esc(e[1]) + '</span></li>'; }).join('') + '</ul>' +
-      '<p class="muted">Limite de perte vérifiée sur le plus bas du jour ; une fois financé, stop placé pour risquer 1,5 % du compte par indice.</p>';
-
+  /* ---------- onglet Bilan : une annee de la regle, de la plus grande lecture au detail ---------- */
+  var byear = null, MOIS_C = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  function yearStats(Y0, L) {
+    var lastDay = Math.max(A.spx.last, A.ndx.last), s0 = dn(Y0 + '-01-01') - 1, e0 = Math.min(lastDay, dn(Y0 + '-12-31')), size = +cfg.size;
+    var T = L.filter(function (t) { return t.e > s0 && t.e <= e0; }).sort(function (x, y) { return x.e - y.e; }), closed = T.filter(function (t) { return !t.open; });
     var money = function (t) { return size * t.lev * t.net; };
-    barChart($('b-bars'), {
-      v: closed.map(money), label: 'Résultat de chaque trade en ' + Y0, height: 200, fmtAxis: function (v) { return nf(v, 0); },
-      xl: closed.length ? [[0, shortDay(closed[0].e)], [closed.length - 1, shortDay(closed[closed.length - 1].e)]] : null,
-      tip: function (i) { var t = closed[i]; return '<div>' + IDX[t.k].name + ' · ' + shortDay(t.e) + ' → ' + shortDay(t.x) + '</div><div><b>' + sUsd(money(t)) + '</b> · indice ' + pct(t.gross) + ' · ' + jours(t.x - t.e) + '</div>'; }
+    var bd = byDay(T), days = IDX.spx.days.filter(function (d) { return d > s0 && d <= e0; });
+    var cum = 0, peak = 0, mdd = 0, xs = [], ys = [], dd = [], inMkt = 0, wDay = 0, wDayD = null;
+    days.forEach(function (d) {
+      var v = bd[d] || [], r = 0, rl = 0;
+      v.forEach(function (x) { r += x.lev * x.r; rl += x.lev * x.rl; });
+      if (v.length) inMkt++;
+      if (rl < wDay) { wDay = rl; wDayD = d; }
+      cum += r; peak = Math.max(peak, cum); mdd = Math.min(mdd, cum - peak); xs.push(d); ys.push(cum * 100); dd.push((cum - peak) * 100);
     });
-    var months = [], mv = [];
-    for (var m = 0; m < 12; m++) { var md = dn(Y0 + '-' + String(m + 1).padStart(2, '0') + '-01'); if (md > e0) break; months.push(m); mv.push(0); }
-    closed.forEach(function (t) { var m = new Date(t.x * DAY).getUTCMonth(); if (new Date(t.x * DAY).getUTCFullYear() === Y0 && m < mv.length) mv[m] += money(t); });
-    barChart($('b-month'), {
-      v: mv, label: 'Résultat par mois en ' + Y0, height: 200, fmtAxis: function (v) { return nf(v, 0); },
-      xl: months.map(function (m) { return [m, MOIS[m]]; }).filter(function (p, i) { return mv.length <= 6 || i % 2 === 0; }),
-      tip: function (i) { var n = closed.filter(function (t) { return new Date(t.x * DAY).getUTCMonth() === i && new Date(t.x * DAY).getUTCFullYear() === Y0; }).length; return '<div>' + MOIS[i] + ' ' + Y0 + '</div><div><b>' + sUsd(mv[i]) + '</b> · ' + n + ' trade' + (n > 1 ? 's' : '') + '</div>'; }
+    var wins = closed.filter(function (t) { return t.net > 0; }), gW = 0, gL = 0, run = 0, streak = 0;
+    closed.forEach(function (t) { var m = money(t); if (t.net > 0) { gW += m; run++; } else { gL += m; run = 0; } streak = Math.max(streak, run); });
+    var hold = {};
+    ['spx', 'ndx'].forEach(function (k) {
+      var I = IDX[k], i0 = -1, i1 = -1, q;
+      for (q = 0; q < I.days.length; q++) if (I.days[q] > s0) { i0 = q; break; }
+      for (q = I.days.length - 1; q >= 0; q--) if (I.days[q] <= e0) { i1 = q; break; }
+      hold[k] = i0 > 0 && i1 >= i0 ? I.c[i1] / I.c[i0 - 1] - 1 : null;
+    });
+    var sim = simAccount(s0, e0);
+    return { Y0: Y0, s0: s0, e0: e0, lastDay: lastDay, size: size, T: T, closed: closed, money: money, cum: cum, mdd: mdd, xs: xs, ys: ys, dd: dd,
+      inMkt: days.length ? inMkt / days.length : 0, wDay: wDay, wDayD: wDayD, wins: wins, gW: gW, gL: gL, streak: streak, hold: hold, sim: sim,
+      net: sim.paid - sim.fees, avgLev: T.length ? T.reduce(function (x, t) { return x + t.lev; }, 0) / T.length : 0 };
+  }
+  var bMini = function (l, v, sub, cls) { return '<div class="bh-m"><span>' + l + '</span><b class="' + (cls || '') + '">' + v + '</b>' + (sub ? '<small>' + sub + '</small>' : '') + '</div>'; };
+  function ringSvg(p, label) {
+    var r = 34, c = 2 * Math.PI * r, d = Math.max(0, Math.min(1, p)) * c;
+    return '<svg class="ring" viewBox="0 0 84 84" role="img" aria-label="' + esc(label) + '"><circle cx="42" cy="42" r="' + r + '" class="ring-bg"/>' +
+      '<circle cx="42" cy="42" r="' + r + '" class="ring-fg" stroke-dasharray="' + d.toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90 42 42)"/>' +
+      '<text x="42" y="48" text-anchor="middle" class="ring-t">' + Math.round(p * 100) + ' %</text></svg>';
+  }
+  function meter(lab, val, txt, lim, limTxt) {
+    var w = Math.max(0, Math.min(100, val / lim * 100));
+    return '<div class="mtr"><div class="mtr-h"><span>' + lab + '</span><b>' + txt + '</b></div><div class="mtr-t"><i class="' + (w >= 80 ? 'hot' : w >= 50 ? 'warm' : '') + '" style="width:' + w.toFixed(1) + '%"></i></div><small>' + limTxt + '</small></div>';
+  }
+  /* parcours du dernier compte de l'annee : achat, phase 1, phase 2, paiements */
+  function journeyHtml(S) {
+    var ev = S.sim.ev, a = S.sim.a, last = 0, q;
+    for (q = 0; q < ev.length; q++) if (/^Achat du compte/.test(ev[q][1])) last = q;
+    var mine = ev.slice(last), find = function (re) { var e = mine.filter(function (x) { return re.test(x[1]); })[0]; return e ? e[0] : null; };
+    var d0 = mine[0][0], d1 = find(/^Phase 1/), d2 = find(/^Phase 2/), pays = mine.filter(function (x) { return /^Paiement/.test(x[1]); });
+    var paid = pays.reduce(function (s2, x) { return s2 + (x[3] || 0); }, 0);
+    var prog = function (target) { return pct((a.bal - S.size) / S.size, 1) + ' sur ' + nf(target * 100, 0) + ' %'; };
+    var mois = function (x, y) { var n = Math.max(1, Math.round((y - x) / 30.4)); return n + ' mois'; };
+    var steps = [
+      { t: 'Achat', d: shortDay(d0), s: 'done' },
+      { t: 'Phase 1', d: d1 ? shortDay(d1) : a.ph === 1 ? prog(0.08) : '—', s: d1 ? 'done' : a.ph === 1 ? 'cur' : '', w: d1 ? 'en ' + mois(d0, d1) : '' },
+      { t: 'Phase 2', d: d2 ? shortDay(d2) : a.ph === 2 ? prog(0.05) : '—', s: d2 ? 'done' : a.ph === 2 ? 'cur' : '', w: d2 && d1 ? 'en ' + mois(d1, d2) : '' },
+      { t: 'Paiements', d: pays.length ? pays.length + ' · ' + usd(paid) : a.ph === 3 ? 'financé, en attente' : '—', s: pays.length ? 'done' : a.ph === 3 ? 'cur' : '' }
+    ];
+    var burnt = ev.filter(function (x) { return x[2] === 'bad'; });
+    return '<div class="jr">' + steps.map(function (x, i) {
+      return '<div class="jr-s ' + x.s + '"><i>' + (x.s === 'done' ? ico('check') : i + 1) + '</i><b>' + x.t + '</b><span>' + x.d + '</span>' + (x.w ? '<small>' + x.w + '</small>' : '') + '</div>';
+    }).join('') + '</div>' + (burnt.length ? '<p class="jr-burn">' + ico('alert') + ' ' + burnt.length + ' compte' + (burnt.length > 1 ? 's' : '') + ' cramé' + (burnt.length > 1 ? 's' : '') +
+      ' cette année (' + burnt.map(function (x) { return shortDay(x[0]); }).join(', ') + '), racheté' + (burnt.length > 1 ? 's' : '') + ' aussitôt. Le parcours ci-dessus est celui du compte ' + a.n + '.</p>' : '');
+  }
+  function yearBars(el, ALL, sel) {
+    var W = Math.max(280, el.clientWidth || 600), H = 196, T = 24, B = 40, n = ALL.length, slot = W / n, bw = Math.min(44, slot * 0.58);
+    var vals = ALL.map(function (x) { return x.cum * 100; }), hi = Math.max(2, Math.max.apply(null, vals)), lo = Math.min(0, Math.min.apply(null, vals));
+    var Y = function (v) { return T + (H - T - B) * (hi - v) / (hi - lo); }, g = '<line class="zero" x1="0" x2="' + W + '" y1="' + Y(0) + '" y2="' + Y(0) + '"/>';
+    ALL.forEach(function (x, i) {
+      var v = vals[i], bx = slot * i + (slot - bw) / 2, y0 = Y(0), y1 = Y(v), top = Math.min(y0, y1), hh = Math.max(2, Math.abs(y1 - y0)), cx = bx + bw / 2;
+      g += '<g class="yb' + (x.Y0 === sel ? ' on' : '') + '" data-byear="' + x.Y0 + '"><rect class="yb-hit" x="' + (slot * i) + '" y="0" width="' + slot + '" height="' + H + '"/>' +
+        '<rect class="' + (v >= 0 ? 'bar-pos' : 'bar-neg') + '" x="' + bx.toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + hh.toFixed(1) + '" rx="4"/>' +
+        '<text class="yb-v' + (v < 0 ? ' neg' : '') + '" x="' + cx + '" y="' + (v >= 0 ? top - 6 : y0 - 6) + '" text-anchor="middle">' + (v >= 0 ? '+' : '−') + nf(Math.abs(v), 0) + ' %</text>' +
+        '<text class="yb-y" x="' + cx + '" y="' + (H - 21) + '" text-anchor="middle">' + x.Y0 + '</text>' +
+        '<text class="yb-n ' + (x.net >= 0 ? 'pos' : 'neg') + '" x="' + cx + '" y="' + (H - 5) + '" text-anchor="middle">' + (x.net >= 0 ? '+' : '−') + nf(Math.abs(x.net) / 1000, 1) + 'k $</text></g>';
+    });
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Performance de la règle et bilan FundedNext chaque année">' + g + '</svg>' +
+      '<div class="legend"><span>Barres : performance du compte (%)</span><span>En dessous : bilan FundedNext de l’année</span></div>';
+  }
+  function ddChart(el, xs, dd) {
+    var W = Math.max(280, el.clientWidth || 600), H = 64, L = 50, R = 12, n = xs.length, lo = Math.min(-1, Math.min.apply(null, dd)) * 1.1;
+    var X = function (i) { return L + (W - L - R) * (n > 1 ? i / (n - 1) : 0); }, Y = function (v) { return 4 + (H - 8) * v / lo; };
+    var d = 'M' + L + ' ' + Y(0); dd.forEach(function (v, i) { d += 'L' + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }); d += 'L' + X(n - 1).toFixed(1) + ' ' + Y(0) + 'Z';
+    var mi = dd.indexOf(Math.min.apply(null, dd));
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Recul du compte depuis son plus haut"><line class="zero" x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(0) + '" y2="' + Y(0) + '"/>' +
+      '<path class="dd-area" d="' + d + '"/><text class="ax" x="' + (L - 6) + '" y="' + (Y(lo / 1.1) + 4) + '" text-anchor="end">−' + nf(Math.abs(lo / 1.1), 1) + ' %</text>' +
+      (mi >= 0 && dd[mi] < 0 ? '<circle class="dd-dot" cx="' + X(mi) + '" cy="' + Y(dd[mi]) + '" r="3.5"/><text class="reflab" x="' + Math.min(W - R - 4, X(mi) + 6) + '" y="' + Math.min(H - 4, Y(dd[mi]) + 4) + '" text-anchor="' + (X(mi) > W * 0.75 ? 'end' : 'start') + '">−' + nf(Math.abs(dd[mi]), 1) + ' % le ' + shortDay(xs[mi]) + '</text>' : '') + '</svg>';
+  }
+
+  function renderBilan() {
+    var lastDay = Math.max(A.spx.last, A.ndx.last), lastY = new Date(lastDay * DAY).getUTCFullYear(), years = [], y;
+    for (y = Math.max(2020, new Date(IDX.spx.days[0] * DAY).getUTCFullYear() + 3); y <= lastY; y++) years.push(y);
+    if (byear === null) byear = +store.get('year', lastY);
+    if (years.indexOf(byear) < 0) byear = lastY;
+    var L = legs(false), ALL = years.map(function (yy) { return yearStats(yy, L); }), S = ALL[years.indexOf(byear)], size = S.size, closed = S.closed, money = S.money;
+    var nOpen = S.T.length - closed.length, wr = closed.length ? S.wins.length / closed.length : 0;
+
+    $('b-years').innerHTML = years.map(function (yy) { return '<button role="tab" data-byear="' + yy + '" aria-selected="' + (yy === byear) + '">' + yy + (yy === lastY ? '<small>en cours</small>' : '') + '</button>'; }).join('');
+    var yon = $('b-years').querySelector('[aria-selected="true"]'); if (yon) $('b-years').scrollLeft = Math.max(0, yon.offsetLeft - $('b-years').clientWidth / 2 + yon.clientWidth / 2);
+
+    /* 1. le resultat de l'annee */
+    var period = S.e0 === lastDay ? 'du 2 janvier au ' + shortDay(lastDay) : 'année complète';
+    $('b-hero').innerHTML = '<div class="bh-top"><span class="bh-y">' + byear + '</span><span>' + period + ' · compte ' + nf(size / 1000) + 'k · ' + (cfg.dose ? 'taille dosée' : nf(cfg.lev, 2) + ' × fixe') + '</span></div>' +
+      '<div class="bh-main"><div class="bh-res"><span>Bilan FundedNext</span><b class="' + (S.net >= 0 ? 'pos' : 'neg') + '">' + sUsd(S.net) + '</b><small>' + usd(S.sim.paid) + ' de paiements − ' + usd(S.sim.fees) + ' de comptes achetés</small></div>' +
+      '<div class="bh-side">' + bMini('Performance', pct(S.cum, 1), 'du compte', S.cum >= 0 ? 'pos' : 'neg') + bMini('Trades', closed.length + (nOpen ? ' + ' + nOpen : ''), closed.length ? Math.round(wr * 100) + ' % gagnants' : 'aucun terminé') +
+      bMini('Pire recul', pct(S.mdd, 1), 'limite 10 %', S.mdd <= -0.05 ? 'neg' : '') + '</div></div>' + journeyHtml(S);
+
+    /* 2. chaque annee */
+    yearBars($('b-annees'), ALL, byear);
+
+    /* 3. evolution du compte */
+    $('b-perf-sub').textContent = 'en % du compte, frais compris';
+    if (S.xs.length >= 2) {
+      lineChart($('b-perf'), { x: S.xs, series: [{ name: 'Performance', v: S.ys, c: '--s1' }], height: 200, label: 'Performance cumulée de la règle en ' + byear, fmt: function (v) { return (v < -0.05 ? '−' : '') + nf(Math.abs(v) < 0.05 ? 0 : Math.abs(v), 1) + ' %'; } });
+      ddChart($('b-dd'), S.xs, S.dd);
+    } else { $('b-perf').innerHTML = '<p class="empty">Pas encore assez de données.</p>'; $('b-dd').innerHTML = ''; }
+
+    /* 4. le risque face aux limites FundedNext */
+    $('b-risk').innerHTML = '<div class="b-h"><h2>Le risque</h2><span class="muted">face aux limites FundedNext</span></div>' +
+      meter('Pire recul du compte', -S.mdd, pct(S.mdd, 1), 0.10, 'limite : −10 % au total') +
+      meter('Pire journée, au plus bas', -S.wDay, pct(S.wDay, 1) + (S.wDayD ? ' · ' + shortDay(S.wDayD) : ''), 0.05, 'limite : −5 % dans la journée') +
+      meter('Temps en position', S.inMkt, Math.round(S.inMkt * 100) + ' %', 1, 'des jours de Bourse de l’année') +
+      '<dl class="b-dl"><div><dt>Taille moyenne prise</dt><dd>' + (S.T.length ? levTxt(S.avgLev) + ' par indice' : '—') + '</dd></div><div><dt>Comptes cramés</dt><dd class="' + (S.sim.blown ? 'neg' : '') + '">' + S.sim.blown + '</dd></div></dl>';
+
+    /* 5. les trades */
+    var best = closed.reduce(function (m, t) { return !m || money(t) > money(m) ? t : m; }, null), worst = closed.reduce(function (m, t) { return !m || money(t) < money(m) ? t : m; }, null);
+    var dur = closed.length ? closed.reduce(function (x, t) { return x + t.x - t.e; }, 0) / closed.length : 0, tot = S.gW + S.gL, pf = S.gL < 0 ? S.gW / -S.gL : null;
+    var gw = S.gW + Math.abs(S.gL) > 0 ? S.gW / (S.gW + Math.abs(S.gL)) * 100 : 50;
+    $('b-trades').innerHTML = '<div class="b-h"><h2>Les trades</h2><span class="muted">' + closed.length + ' terminés' + (nOpen ? ' + ' + nOpen + ' en cours' : '') + '</span></div>' +
+      (closed.length ? '<div class="b-tgrid"><div class="b-ring">' + ringSvg(wr, Math.round(wr * 100) + ' % de trades gagnants') + '<small>gagnants</small></div>' +
+        '<dl class="b-dl"><div><dt>Résultat par trade</dt><dd class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + sUsd(tot / closed.length) + '</dd></div>' +
+        '<div><dt>Meilleur</dt><dd class="pos">' + sUsd(money(best)) + ' <small>' + shortDay(best.e) + '</small></dd></div>' +
+        '<div><dt>Pire</dt><dd class="' + (money(worst) >= 0 ? 'pos' : 'neg') + '">' + sUsd(money(worst)) + ' <small>' + shortDay(worst.e) + '</small></dd></div>' +
+        '<div><dt>Durée moyenne</dt><dd>' + nf(dur, 1) + ' jours</dd></div><div><dt>Série gagnante</dt><dd>' + S.streak + ' de suite</dd></div></dl></div>' +
+        '<div class="pf"><div class="pf-t"><i class="pf-g" style="width:' + gw.toFixed(1) + '%"></i><i class="pf-l" style="width:' + (100 - gw).toFixed(1) + '%"></i></div>' +
+        '<div class="pf-x"><span class="pos">Gains ' + sUsd(S.gW) + '</span><span>' + (pf !== null ? 'gains / pertes : <b>' + nf(pf, 1) + '</b>' : 'aucune perte') + '</span><span class="neg">Pertes ' + sUsd(S.gL) + '</span></div></div>' +
+        '<div class="chart" id="b-bars"></div>' : '<p class="empty">Aucun trade terminé sur la période.</p>');
+    if (closed.length) barChart($('b-bars'), {
+      v: closed.map(money), label: 'Résultat de chaque trade en ' + byear, height: 170, fmtAxis: function (v) { return nf(v, 0); },
+      xl: [[0, shortDay(closed[0].e)], [closed.length - 1, shortDay(closed[closed.length - 1].e)]],
+      tip: function (i) { var t = closed[i]; return '<div>' + IDX[t.k].name + ' · ' + shortDay(t.e) + ' → ' + shortDay(t.x) + '</div><div><b>' + sUsd(money(t)) + '</b> · indice ' + pct(t.gross) + ' · taille ' + levTxt(t.lev) + '</div>'; }
     });
 
-    $('b-list').innerHTML = T.length ? T.slice().reverse().map(function (t) {
-      return '<tr><td>' + IDX[t.k].name + '</td><td>' + shortDay(t.e) + '</td><td>' + px(t.pe) + '</td><td>' + (t.open ? '<b>en cours</b>' : shortDay(t.x)) + '</td><td>' + (t.open ? px(IDX[t.k].c[IDX[t.k].c.length - 1]) : px(t.px)) +
-        '</td><td>' + jours((t.open ? IDX[t.k].days[IDX[t.k].days.length - 1] : t.x) - t.e) + '</td><td class="' + (t.gross >= 0 ? 'pos' : 'neg') + '">' + pct(t.gross) + '</td><td class="' + (t.net >= 0 ? 'pos' : 'neg') + '">' + sUsd(money(t)) + (t.open ? ' *' : '') + '</td></tr>';
-    }).join('') : '<tr><td colspan="8" class="empty">Aucun signal sur la période.</td></tr>';
+    /* 6. mois par mois */
+    var mv = [], mn = [], mx = 0;
+    for (var m = 0; m < 12; m++) { mv.push(0); mn.push(0); }
+    closed.forEach(function (t) { var dx = new Date(t.x * DAY); if (dx.getUTCFullYear() === byear) { mv[dx.getUTCMonth()] += money(t); mn[dx.getUTCMonth()]++; } });
+    mv.forEach(function (v) { mx = Math.max(mx, Math.abs(v)); });
+    var lastM = S.e0 === lastDay ? new Date(lastDay * DAY).getUTCMonth() : 11;
+    $('b-month').innerHTML = mv.map(function (v, i) {
+      var k = mx ? Math.round(12 + 46 * Math.abs(v) / mx) : 0, bg = v > 0 ? 'color-mix(in srgb, var(--good) ' + k + '%, var(--field))' : v < 0 ? 'color-mix(in srgb, var(--crit) ' + k + '%, var(--field))' : '';
+      return '<div class="mt' + (i > lastM ? ' fut' : '') + '"' + (bg ? ' style="background:' + bg + '"' : '') + '><span>' + MOIS_C[i] + '</span><b class="' + (v > 0 ? 'pos' : v < 0 ? 'neg' : '') + '">' +
+        (i > lastM ? '' : mn[i] ? sUsd(v) : '—') + '</b><small>' + (i > lastM ? 'à venir' : mn[i] ? mn[i] + ' trade' + (mn[i] > 1 ? 's' : '') : 'aucun') + '</small></div>';
+    }).join('');
+
+    /* 7. S&P 500 et Nasdaq-100 */
+    var idxs = ['spx', 'ndx'].map(function (k) {
+      var c = closed.filter(function (t) { return t.k === k; }), tt = 0, g = 0, w = 0;
+      c.forEach(function (t) { tt += money(t); g += t.gross; if (t.net > 0) w++; });
+      return { k: k, n: c.length, tot: tt, w: w, g: c.length ? g / c.length : 0 };
+    }), imx = Math.max(1, Math.abs(idxs[0].tot), Math.abs(idxs[1].tot));
+    $('b-idx').innerHTML = '<div class="b-h"><h2>S&amp;P 500 et Nasdaq-100</h2><span class="muted">qui a rapporté quoi</span></div>' + idxs.map(function (x) {
+      return '<div class="bi"><div class="bi-h"><b>' + IDX[x.k].name + '</b><b class="' + (x.tot >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.tot) + '</b></div>' +
+        '<div class="bi-t"><i class="' + (x.tot >= 0 ? 'g' : 'l') + '" style="width:' + (Math.abs(x.tot) / imx * 100).toFixed(1) + '%"></i></div>' +
+        '<small>' + x.n + ' trade' + (x.n > 1 ? 's' : '') + (x.n ? ' · ' + Math.round(x.w / x.n * 100) + ' % gagnants · ' + pct(x.g, 2) + ' en moyenne sur l’indice' : '') + '</small></div>';
+    }).join('');
+
+    /* 8. la regle face a « acheter et garder » */
+    var rows = [['La règle, sur ton compte', S.cum, 'g'], ['Garder le S&P 500', S.hold.spx, 'n'], ['Garder le Nasdaq-100', S.hold.ndx, 'n']].filter(function (r) { return r[1] !== null; });
+    var vmx = Math.max.apply(null, rows.map(function (r) { return Math.abs(r[1]); }).concat([0.01]));
+    $('b-vs').innerHTML = '<div class="b-h"><h2>Face à « acheter et garder »</h2><span class="muted">' + byear + '</span></div>' + rows.map(function (r) {
+      return '<div class="bv"><span>' + r[0] + '</span><div class="bv-t"><i class="' + (r[1] < 0 ? 'l' : r[2]) + '" style="width:' + (Math.abs(r[1]) / vmx * 100).toFixed(1) + '%"></i></div><b class="' + (r[1] >= 0 ? 'pos' : 'neg') + '">' + pct(r[1], 1) + '</b></div>';
+    }).join('') + '<p class="muted">La règle n’était en position que ' + Math.round(S.inMkt * 100) + ' % des jours. Garder un indice toute l’année n’est pas jouable chez une prop firm : une forte baisse ferait sauter la limite de perte.</p>';
+
+    /* details : trades et journal du compte */
+    $('b-list-title').textContent = 'Les ' + S.T.length + ' trade' + (S.T.length > 1 ? 's' : '') + ' de ' + byear;
+    $('b-list').innerHTML = S.T.length ? S.T.slice().reverse().map(function (t) {
+      var I = IDX[t.k], end = t.open ? I.days[I.days.length - 1] : t.x, v = money(t);
+      return '<div class="trow"><span class="side ' + (t.open ? 'none' : v >= 0 ? 'buy' : 'out') + '">' + (t.k === 'spx' ? 'S&P' : 'NDX') + '</span><span class="rm"><b>' + shortDay(t.e) + ' → ' + (t.open ? 'en cours' : shortDay(t.x)) + '</b>' +
+        '<small>' + jours(end - t.e) + ' · ' + px(t.pe) + ' → ' + px(t.open ? I.c[I.c.length - 1] : t.px) + ' · taille ' + levTxt(t.lev) + '</small></span><span class="rr"><b class="' + (v >= 0 ? 'pos' : 'neg') + '">' + sUsd(v) + (t.open ? ' *' : '') + '</b><small>indice ' + pct(t.gross) + '</small></span></div>';
+    }).join('') + (nOpen ? '<p class="muted">* trade encore ouvert, au dernier prix de fin de journée.</p>' : '') : '<p class="empty">Aucun signal sur la période.</p>';
+    $('b-timeline').innerHTML = S.sim.ev.map(function (e) { return '<li><time>' + shortDay(e[0]) + '</time><span class="' + e[2] + '">' + esc(e[1]) + '</span></li>'; }).join('');
   }
 
   function renderAll() {
@@ -1073,7 +1193,7 @@
     clearTimeout(ev.target._t); ev.target._t = setTimeout(function () { renderOrdres(); renderIdxCard(k); var el = document.querySelector('#sheet [data-manual="' + k + '"]') || document.querySelector('[data-manual="' + k + '"]'); if (el) el.focus(); }, 500);
   });
 
-  $('b-year').addEventListener('change', function () { store.set('year', +$('b-year').value); renderBilan(); });
+  document.addEventListener('click', function (ev) { var yb = ev.target.closest('[data-byear]'); if (yb) { byear = +yb.dataset.byear; store.set('year', byear); renderBilan(); } });
 
   document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && sheetId) closeSheet(); });
 

@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="app.css?v=202611111945">
+<link rel="stylesheet" href="app.css?v=202611111957">
 <script>try{var t=JSON.parse(localStorage.getItem("repli:theme"));if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
 <body>
@@ -199,59 +199,49 @@
       </div>
     </section>
 
-    <!-- REGLE -->
+    <!-- BILAN -->
     <section class="view" id="v-regle" data-title="Bilan de la règle" hidden>
       <div class="grid">
-        <article class="card s12 note">
-          <div class="bar-head">
-            <div>
-              <h2 style="margin:0">Et si j'avais commencé le 2 janvier ?</h2>
-              <p class="muted" id="b-conf" style="margin:4px 0 0">—</p>
-            </div>
-            <label class="field" style="margin:0;min-width:230px"><span>Année</span><select id="b-year" style="max-width:none"></select></label>
-          </div>
-        </article>
-        <article class="card s12"><div class="kpis k8" id="b-kpis"></div></article>
-        <article class="card s8">
-          <h2>Performance de la règle</h2>
-          <p class="muted" id="b-perf-sub" style="margin:0">—</p>
-          <div class="chart" id="b-perf"></div>
-        </article>
-        <article class="card s4" id="b-acct"></article>
-        <article class="card s6">
-          <h2>Résultat de chaque trade</h2>
-          <p class="muted" style="margin:0">En dollars sur ton compte, frais estimés déduits.</p>
-          <div class="chart" id="b-bars"></div>
-        </article>
-        <article class="card s6">
-          <h2>Résultat par mois</h2>
-          <p class="muted" style="margin:0">Trades classés au mois de leur vente.</p>
-          <div class="chart" id="b-month"></div>
-        </article>
+        <div class="s12 b-years" id="b-years" role="tablist" aria-label="Année"></div>
+        <article class="card s12 b-hero" id="b-hero"></article>
         <article class="card s12">
-          <h2>Les signaux de l'année</h2>
-          <div class="table-wrap"><table class="tbl"><thead><tr><th>Indice</th><th>Entrée</th><th>Prix</th><th>Sortie</th><th>Prix</th><th>Durée</th><th>Indice</th><th>Sur le compte</th></tr></thead><tbody id="b-list"></tbody></table></div>
+          <div class="b-h"><h2>Chaque année</h2><span class="muted">compte acheté le 2 janvier · touche une année</span></div>
+          <div class="chart" id="b-annees"></div>
         </article>
+        <article class="card s8">
+          <div class="b-h"><h2>Évolution du compte</h2><span class="muted" id="b-perf-sub"></span></div>
+          <div class="chart" id="b-perf"></div>
+          <div class="b-ddlab">Recul depuis le plus haut</div>
+          <div class="chart" id="b-dd"></div>
+        </article>
+        <article class="card s4" id="b-risk"></article>
+        <article class="card s6" id="b-trades"></article>
         <article class="card s6">
-          <h2>La règle, en 3 lignes</h2>
+          <div class="b-h"><h2>Mois par mois</h2><span class="muted">au mois de sortie du trade</span></div>
+          <div class="b-months" id="b-month"></div>
+        </article>
+        <article class="card s6" id="b-idx"></article>
+        <article class="card s6" id="b-vs"></article>
+        <details class="card s12 more-card"><summary><h2 id="b-list-title">Les trades de l’année</h2></summary><div class="list" id="b-list"></div></details>
+        <details class="card s12 more-card"><summary><h2>Le compte FundedNext jour après jour</h2></summary><ul class="timeline" id="b-timeline"></ul>
+          <p class="muted">Limite de perte vérifiée sur le plus bas du jour ; une fois financé, stop placé pour risquer 1,5 % du compte par indice.</p></details>
+        <details class="card s12 more-card"><summary><h2>La règle et ce que disent les tests</h2></summary>
           <ol class="steps">
-            <li><b>Entrer</b> (acheter) à la fin de la journée quand l'indice vient de baisser fortement sur 2 jours, mais reste au-dessus de sa moyenne des 200 derniers jours.</li>
+            <li><b>Entrer</b> (acheter) à la fin de la journée quand l’indice vient de baisser fortement sur 2 jours, mais reste au-dessus de sa moyenne des 200 derniers jours.</li>
             <li><b>Sortir</b> (fermer le trade) le premier soir où il finit au-dessus de son niveau de sortie (la moyenne de ses 4 derniers prix de fin de journée), au plus tard après environ 2 semaines.</li>
-            <li>S&amp;P 500 et Nasdaq-100 séparément, un seul trade à la fois par indice. On ne parie jamais à la baisse.</li>
+            <li><b>Taille dosée</b> : plus petite quand le marché est agité, plus grande quand il est calme (de 0,375 à 1,5 × par indice).</li>
+            <li>S&amp;P 500 et Nasdaq-100 séparément, un seul trade à la fois par indice. Jamais de pari à la baisse.</li>
           </ol>
-        </article>
-        <article class="card s6">
-          <h2>Ce que disent les tests</h2>
-          <div class="facts">
-            <div><span>Trades gagnants</span><b>≈ 70 %</b></div>
-            <div><span>Gain moyen par trade depuis 2009</span><b>+0,37 %</b><small>+0,26 % avec le stop de 3 %</small></div>
-            <div><span>Trades par an et par indice</span><b>8 à 9</b></div>
-            <div><span>Comptes 50k payés (0,5 ×, sur 4 ans)</span><b>49 %</b><small>gain moyen +1 271 $ par compte</small></div>
-            <div><span>Départs janv. 2023 et 2024 (0,5 ×)</span><b>+4 163 $</b><small>sans compte cramé</small></div>
-            <div><span>Pire chute dans une journée (2026)</span><b>−6,5 %</b><small>9 juin et 5 novembre, les deux indices</small></div>
+          <div class="facts" style="margin-top:12px">
+            <div><span>Trades gagnants</span><b>≈ 70 %</b><small>depuis 2009</small></div>
+            <div><span>Trades par an</span><b>≈ 17</b><small>les deux indices ensemble</small></div>
+            <div><span>Compte 50k sur 4 ans (départs 2009–2022)</span><b>+1 488 $</b><small>médiane ; moyenne +2 292 $</small></div>
+            <div><span>Départs perdants sur 4 ans</span><b>26 %</b><small>perte limitée aux comptes achetés</small></div>
+            <div><span>Comptes cramés en 4 ans</span><b>1,6</b><small>en moyenne, rachetés aussitôt</small></div>
+            <div><span>Pire journée depuis 2009</span><b>−7,0 %</b><small>les deux indices, au plus bas</small></div>
           </div>
-          <p class="muted">Simulations sur l'historique 1991–2026 : le passé ne garantit rien. À confirmer en démo.</p>
-        </article>
+          <p class="muted">Simulations sur l’historique : le passé ne garantit rien. À confirmer en démo.</p>
+        </details>
       </div>
     </section>
   </main>
@@ -260,6 +250,6 @@
   <div class="sheet-bg" data-close></div>
   <div class="sheet" role="dialog" aria-modal="true" aria-label="Détail"><button class="sheet-x" data-close aria-label="Fermer">×</button><div id="sheet-body"></div></div>
 </div>
-<script src="app.js?v=202611111945"></script>
+<script src="app.js?v=202611111957"></script>
 </body>
 </html>
