@@ -78,7 +78,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date(nowMs()))); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 11/11 19:57';
+  var VERSION = 'version du 11/11 20:08';
   var DEF = { size: 50000, lev: 0.5, dose: true, phase: 1, start: '', bal: '', ct: { spx: 10, ndx: 10 }, step: 0.01 };   // dose : taille dosee par la volatilite (base 0,75 x)   // FundedNext : 1 lot d'indice = 10 fois l'indice
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -909,28 +909,37 @@
     });
     return out;
   }
-  function byDay(L) { var b = {}; L.forEach(function (t) { t.days.forEach(function (x) { (b[x.d] = b[x.d] || []).push({ e: t.e, r: x.r, rl: x.rl, lev: t.lev }); }); }); return b; }
+  function byDay(L) { var b = {}; L.forEach(function (t) { var last = t.days.length ? t.days[t.days.length - 1].d : null; t.days.forEach(function (x) { (b[x.d] = b[x.d] || []).push({ e: t.e, r: x.r, rl: x.rl, lev: t.lev, id: t.k + t.e, end: !t.open && x.d === last }); }); }); return b; }
 
   /* compte FundedNext Stellar 2-Step simule depuis s0, compte crame remplace aussitot */
+  /* compte FundedNext Stellar 2-Step simule : achete le premier jour de Bourse de la periode (trades ouverts avant exclus), compte crame
+     remplace aussitot. Limites de perte sur les trades ouverts compris (au plus bas du jour) ; objectifs de phase et paiements sur les
+     trades fermes seulement ; au moins 5 jours de Bourse par phase (regle officielle, completee si besoin par de tout petits trades). */
   function simAccount(s0, e0) {
     var size = +cfg.size, fee = FEES[size] || 299.99, Bns = byDay(legs(false)), Bs = byDay(legs(true));
     var days = Object.keys(Bns).concat(Object.keys(Bs)).map(Number).concat(IDX.spx.days).filter(function (d) { return d > s0 && d <= e0; });
     days = days.filter(function (d, i) { return days.indexOf(d) === i; }).sort(function (a, b) { return a - b; });
-    var ev = [], fees = fee, paid = 0, blown = 0, curve = [], a = { ph: 1, bal: size, since: s0, due: null, ref: false, n: 1 };
+    var fresh = function (since, n) { return { ph: 1, bal: size, real: size, since: since, due: null, ref: false, n: n, open: {}, nd: 0 }; };
+    var ev = [], fees = fee, paid = 0, blown = 0, curve = [], a = fresh(s0 + 1, 1);
     ev.push([days[0] || s0, 'Achat du compte ' + a.n + ' (' + usd(fee, 2) + ')', '']);
     days.forEach(function (d) {
       var B = a.ph < 3 ? Bns : Bs, mine = (B[d] || []).filter(function (x) { return x.e >= a.since; });
       var pnl = 0, worst = 0; mine.forEach(function (x) { pnl += size * x.lev * x.r; worst += size * x.lev * x.rl; });
+      a.nd++;
       if (worst <= -0.05 * size || a.bal + worst <= 0.9 * size || pnl <= -0.05 * size) {
         blown++; ev.push([d, 'Compte ' + a.n + ' cramé en ' + (a.ph < 3 ? 'phase ' + a.ph : 'compte financé') + ' (perte ' + usd(Math.min(worst, pnl)) + ' dans la journée)', 'bad']);
-        a = { ph: 1, bal: size, since: d, due: null, ref: false, n: a.n + 1 }; fees += fee; ev.push([d, 'Achat du compte ' + a.n + ' (' + usd(fee, 2) + ')', '']);
+        a = fresh(d, a.n + 1); fees += fee; ev.push([d, 'Achat du compte ' + a.n + ' (' + usd(fee, 2) + ')', '']);
       } else {
         a.bal += pnl;
-        if (a.ph === 1 && a.bal >= size * 1.08) { ev.push([d, 'Phase 1 réussie (+8 %)', 'ok']); a.ph = 2; a.bal = size; a.since = d; }
-        else if (a.ph === 2 && a.bal >= size * 1.05) { ev.push([d, 'Phase 2 réussie : compte financé', 'ok']); a.ph = 3; a.bal = size; a.since = d; a.due = d + 21; }
+        mine.forEach(function (x) { a.open[x.id] = (a.open[x.id] || 0) + size * x.lev * x.r; if (x.end) { a.real += a.open[x.id]; delete a.open[x.id]; } });
+        if (a.ph === 1 && a.real >= size * 1.08 && a.nd >= 5) { ev.push([d, 'Phase 1 réussie (+8 % sur les trades fermés)', 'ok']); a = Object.assign(fresh(d, a.n), { ph: 2 }); }
+        else if (a.ph === 2 && a.real >= size * 1.05 && a.nd >= 5) { ev.push([d, 'Phase 2 réussie : compte financé', 'ok']); a = Object.assign(fresh(d, a.n), { ph: 3, due: d + 21 }); }
         else if (a.ph === 3 && d >= a.due) {
           a.due = d + 14;
-          if (a.bal > size) { var amt = 0.8 * (a.bal - size) + (a.ref ? 0 : fee); paid += amt; ev.push([d, 'Paiement ' + usd(amt) + (a.ref ? '' : ' (prix du compte remboursé)'), 'ok', amt]); a.ref = true; a.bal = size; }
+          if (a.real > size) {
+            var g = a.real - size, amt = 0.8 * g + (a.ref ? 0 : fee); paid += amt;
+            ev.push([d, 'Paiement ' + usd(amt) + (a.ref ? '' : ' (prix du compte remboursé)'), 'ok', amt]); a.ref = true; a.real = size; a.bal -= g;
+          }
         }
       }
       curve.push([d, paid - fees + (a.bal - size)]);
@@ -1018,7 +1027,7 @@
     var mine = ev.slice(last), find = function (re) { var e = mine.filter(function (x) { return re.test(x[1]); })[0]; return e ? e[0] : null; };
     var d0 = mine[0][0], d1 = find(/^Phase 1/), d2 = find(/^Phase 2/), pays = mine.filter(function (x) { return /^Paiement/.test(x[1]); });
     var paid = pays.reduce(function (s2, x) { return s2 + (x[3] || 0); }, 0);
-    var prog = function (target) { return pct((a.bal - S.size) / S.size, 1) + ' sur ' + nf(target * 100, 0) + ' %'; };
+    var prog = function (target) { return pct((a.real - S.size) / S.size, 1) + ' sur ' + nf(target * 100, 0) + ' %'; };
     var mois = function (x, y) { var n = Math.max(1, Math.round((y - x) / 30.4)); return n + ' mois'; };
     var steps = [
       { t: 'Achat', d: shortDay(d0), s: 'done' },
