@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="app.css?v=202611092343">
+<link rel="stylesheet" href="app.css?v=202611111523">
 <script>try{var t=JSON.parse(localStorage.getItem("repli:theme"));if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
 <body>
@@ -89,8 +89,8 @@
           <label class="field"><span>Solde actuel (MT5)</span><input id="c-bal" type="number" inputmode="decimal" placeholder="estimé d'après le journal"><em>$</em></label>
           <details class="more">
             <summary>Réglages avancés</summary>
-            <label class="field"><span>Unités d'indice par lot, SPX500</span><input id="c-ct-spx" type="number" inputmode="decimal" step="any"></label>
-            <label class="field"><span>Unités d'indice par lot, NDX100</span><input id="c-ct-ndx" type="number" inputmode="decimal" step="any"></label>
+            <label class="field"><span>Taille du contrat, SPX500 (FundedNext : 10)</span><input id="c-ct-spx" type="number" inputmode="decimal" step="any"></label>
+            <label class="field"><span>Taille du contrat, NDX100 (FundedNext : 10)</span><input id="c-ct-ndx" type="number" inputmode="decimal" step="any"></label>
             <label class="field"><span>Pas de volume (lots)</span><input id="c-step" type="number" inputmode="decimal" step="any"></label>
             <p class="muted">À lire dans MT5 : clic droit sur le symbole → Spécification → « Taille du contrat » et « Pas du volume ».</p>
           </details>
@@ -259,6 +259,6 @@
   <div class="sheet-bg" data-close></div>
   <div class="sheet" role="dialog" aria-modal="true" aria-label="Détail"><button class="sheet-x" data-close aria-label="Fermer">×</button><div id="sheet-body"></div></div>
 </div>
-<script src="app.js?v=202611092343"></script>
+<script src="app.js?v=202611111523"></script>
 </body>
 </html>

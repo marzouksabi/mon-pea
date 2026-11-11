@@ -78,11 +78,21 @@
   var parisToday = function () { return dn(parisYMD.format(new Date(nowMs()))); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 09/11 23:43';
-  var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 1, ndx: 1 }, step: 0.01 };
+  var VERSION = 'version du 11/11 15:23';
+  var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 10, ndx: 10 }, step: 0.01 };   // FundedNext : 1 lot d'indice = 10 fois l'indice
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
   var trades = store.get('trades', []);
+  /* correction du 11 nov. 2026 : taille de contrat des indices chez FundedNext = 10 (et non 1). Les reglages restes a 1 passent a 10 ;
+     les trades deja notes gardent la taille de contrat avec laquelle ils ont ete calcules. */
+  var CTFIX = store.get('ctfix', null);
+  if (!CTFIX) {
+    var ctChanged = false;
+    ['spx', 'ndx'].forEach(function (k) { if (+cfg.ct[k] === 1) { cfg.ct[k] = 10; ctChanged = true; } });
+    trades.forEach(function (t) { if (!t.ct) t.ct = 1; });
+    CTFIX = { at: Date.now(), changed: ctChanged }; store.set('ctfix', CTFIX); store.set('cfg', cfg); store.set('trades', trades);
+  }
+  var ctOf = function (t) { return +t.ct || +cfg.ct[t.idx] || 10; };
   var manual = store.get('manual', {});                              // prix MT5 saisis : {spx: {p, day}, ...}
 
   /* ---------- donnees ---------- */
@@ -140,7 +150,7 @@
   }
 
   function lotsFor(k, price) {
-    var units = cfg.size * cfg.lev / price, ct = +cfg.ct[k] || 1, step = +cfg.step || 0.01;
+    var units = cfg.size * cfg.lev / price, ct = +cfg.ct[k] || 10, step = +cfg.step || 0.01;
     var lots = Math.floor(units / ct / step + 1e-9) * step;
     return { lots: +lots.toFixed(6), notional: lots * ct * price };
   }
@@ -152,7 +162,7 @@
 
   /* ---------- compte ---------- */
   function pnlOf(t) {
-    var ct = +cfg.ct[t.idx] || 1, out = t.p2 > 0 ? t.p2 : (A[t.idx] ? A[t.idx].P : t.p1);
+    var ct = ctOf(t), out = t.p2 > 0 ? t.p2 : (A[t.idx] ? A[t.idx].P : t.p1);
     return (out - t.p1) * t.lots * ct - (+t.fee || 0);
   }
   function account() {
@@ -170,7 +180,7 @@
     var payout = null;
     if (cfg.phase == 3 && start !== null) { payout = start + 21; while (payout < today) payout += 14; }
     var risk = 0;
-    trades.forEach(function (t) { if (!t.d2) risk += t.p1 * stopPct() * t.lots * (+cfg.ct[t.idx] || 1); });
+    trades.forEach(function (t) { if (!t.d2) risk += t.p1 * stopPct() * t.lots * ctOf(t); });
     return { size: size, bal: bal, est: est, equity: bal + open, open: open, target: target, maxFloor: size * 0.9, dayFloor: bal - size * 0.05,
       tradingDays: Object.keys(days).length, inactive: today - refDay, deadline: refDay + 60, payout: payout, risk: risk };
   }
@@ -233,12 +243,14 @@
   /* Etat d'un indice, avec le meme vocabulaire partout : entrer (acheter), sortir (fermer le trade),
      prix de fin de journee (22 h a Paris), niveau d'entree, niveau de sortie. */
   function plan(k) {
-    var a = A[k], I = IDX[k], np = nowPrice(k, session), live = np ? np.p : null, ct = +cfg.ct[k] || 1;
+    var a = A[k], I = IDX[k], np = nowPrice(k, session), live = np ? np.p : null, ct = +cfg.ct[k] || 10;
     var jt = trades.filter(function (t) { return t.idx === k && !t.d2; })[0] || null;
     var o = { k: k, a: a, I: I, np: np, step: 1, tone: 'idle', title: '', sub: '', check: null, how: null, trade: null };
     var lastClose = I.c[I.c.length - 1], cur = live || lastClose;
     if (a.mode === 'pos') {
       var tr = { real: !!jt, d1: jt ? dn(jt.d1) : a.entryDay, p1: jt ? jt.p1 : a.entry, lots: jt ? jt.lots : lotsFor(k, a.entry).lots, fee: jt ? (+jt.fee || 0) : 0 };
+      if (jt) ct = ctOf(jt);
+      tr.ct = ct;
       tr.cur = cur; tr.pnl = (cur - tr.p1) * tr.lots * ct - tr.fee; tr.r = cur / tr.p1 - 1; tr.stop = cfg.phase == 3 ? tr.p1 * (1 - stopPct()) : null;
       tr.hit = null;
       if (tr.stop) for (var q = 0; q < I.days.length; q++) if (I.days[q] > tr.d1 && I.l[q] <= tr.stop) { tr.hit = I.days[q]; break; }
@@ -263,7 +275,7 @@
       }
     } else if (jt) {
       var lastT = a.st.trades.length ? a.st.trades[a.st.trades.length - 1] : null, ex = lastT && I.days[lastT[1]] >= dn(jt.d1) ? lastT : null;
-      var ctj = +cfg.ct[k] || 1, pxOut = ex ? I.c[ex[1]] : cur;
+      var ctj = ctOf(jt), pxOut = ex ? I.c[ex[1]] : cur;
       o.trade = { real: true, orphan: true, id: jt.id, d1: dn(jt.d1), p1: jt.p1, lots: jt.lots, fee: +jt.fee || 0, cur: pxOut, stop: null, hit: null,
         exitDay: ex ? I.days[ex[1]] : null, deadline: ex ? I.days[ex[1]] : dn(jt.d1) };
       o.trade.pnl = (pxOut - jt.p1) * jt.lots * ctj - o.trade.fee; o.trade.r = pxOut / jt.p1 - 1;
@@ -389,6 +401,7 @@
       if (EARLY.indexOf(ds(d)) >= 0) { out.push(['warn', '!', '<b>La Bourse ferme plus tôt le ' + longDay(d) + '</b> : fin de journée à ' + hm(closeUTC(d)) + ' (heure de Paris).']); break; }
     }
     if (s.target && s.bal >= s.target) out.push(['ok', 'check', '<b>Objectif de la phase atteint.</b> Vérifie les 5 jours de trading, puis passe à l\'étape suivante dans Compte.']);
+    if (CTFIX && CTFIX.changed && Date.now() - CTFIX.at < 21 * DAY) out.unshift(['crit', '!', '<b>Lots corrigés.</b> Chez FundedNext, 1 lot d’indice = 10 fois l’indice : l’appli affiche maintenant 10 fois moins de lots qu’avant (environ 0,33 au lieu de 3,3). Vérifie dans MT5 : clic droit sur SPX500 → Spécification → Taille du contrat.']);
     if (!out.length) out.push(['ok', 'check', '<b>Rien à signaler.</b> Compte actif, prix à jour.']);
     return out;
   }
@@ -755,8 +768,8 @@
         decisionHtml(o) +
         '<div class="days"><div class="track"><div class="fill" style="width:' + prog * 100 + '%"></div></div><div class="labels"><span>entrée ' + shortDay(tr.d1) + '</span><span><b>' + jours(last - tr.d1) + '</b></span><span>sortie max ' + shortDay(tr.deadline) + '</span></div></div>' +
         '<div class="tiles">' + tile('Prix d\'entrée', px(tr.p1)) + tile('Prix actuel', px(tr.cur)) + tile('Niveau de sortie', px(a2.Y)) +
-        tile('Variation de l\'indice', pct(tr.r), tr.r >= 0 ? 'pos' : 'neg') + tile('Hausse nécessaire pour sortir', a2.Y > tr.cur ? pct(a2.Y / tr.cur - 1) : 'atteinte', a2.Y > tr.cur ? '' : 'pos') + tile('Lots', nf(tr.lots, 2)) + tile('Stop', tr.stop ? px(tr.stop) : 'aucun') + tile('Valeur du trade', usd(tr.cur * tr.lots * (+cfg.ct[o.k] || 1))) +
-          tile('Marge bloquée', margeTxt(tr.cur * tr.lots * (+cfg.ct[o.k] || 1))) + tile('Levier max', '1:' + levMax()) + '</div>' +
+        tile('Variation de l\'indice', pct(tr.r), tr.r >= 0 ? 'pos' : 'neg') + tile('Hausse nécessaire pour sortir', a2.Y > tr.cur ? pct(a2.Y / tr.cur - 1) : 'atteinte', a2.Y > tr.cur ? '' : 'pos') + tile('Lots', nf(tr.lots, 2)) + tile('Stop', tr.stop ? px(tr.stop) : 'aucun') + tile('Valeur du trade', usd(tr.cur * tr.lots * (tr.ct || 10))) +
+          tile('Marge bloquée', margeTxt(tr.cur * tr.lots * (tr.ct || 10))) + tile('Levier max', '1:' + levMax()) + '</div>' +
         inputBox(o) + (exitNow ? '<div class="act-line"><span class="side out">SORTIR</span> MT5 → onglet Trade → <b>croix ×</b> sur ' + o.I.sym + ' (pas « Sell »)</div>' : '');
       k = o.k; var ei = IDX[k].days.findIndex(function (d) { return d >= tr.d1; });
       chart = { k: k, from: Math.max(0, ei - 5), entry: ei, exitLine: true, refs: [{ v: tr.p1, label: 'entrée ' + px(tr.p1), cls: 'ref-buy' }].concat(tr.stop ? [{ v: tr.stop, label: 'stop', cls: 'ref-stop', zone: 'below' }] : []), y: a2.Y };
@@ -1289,6 +1302,8 @@
     if (!t.d1 || !(t.p1 > 0) || !(t.lots > 0)) { alert('Indique au moins la date d\'achat, le prix et le nombre de lots.'); return; }
     if (t.d2 && !(t.p2 > 0)) { alert('Indique le prix de vente.'); return; }
     if (!t.d2) t.p2 = null;
+    var prevT = trades.filter(function (x) { return x.id === t.id; })[0];
+    t.ct = prevT && prevT.ct ? prevT.ct : (+cfg.ct[t.idx] || 10);
     trades = trades.filter(function (x) { return x.id !== t.id; }).concat([t]); store.set('trades', trades);
     fillForm(null); renderAll();
   });
