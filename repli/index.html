@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="app.css?v=202611111523">
+<link rel="stylesheet" href="app.css?v=202611111945">
 <script>try{var t=JSON.parse(localStorage.getItem("repli:theme"));if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
 <body>
@@ -83,7 +83,8 @@
           <label class="field"><span>Taille du compte</span><select id="c-size">
             <option value="6000">6 000 $</option><option value="15000">15 000 $</option><option value="25000">25 000 $</option>
             <option value="50000">50 000 $</option><option value="100000">100 000 $</option><option value="200000">200 000 $</option></select></label>
-          <label class="field"><span>Taille de position</span><select id="c-lev"><option value="0.5">0,5 × par indice (tranquille)</option><option value="0.75">0,75 × par indice</option><option value="1">1 × par indice</option></select></label>
+          <label class="field"><span>Taille de position</span><select id="c-lev"><option value="dose">Dosée selon le marché (conseillé)</option><option value="0.5">Fixe 0,5 × par indice</option><option value="0.75">Fixe 0,75 × par indice</option><option value="1">Fixe 1 × par indice</option></select></label>
+          <p class="muted" style="margin:0 0 8px">Dosée : chaque trade est plus petit quand le marché est agité (jusqu’à 0,375 ×) et plus grand quand il est calme (jusqu’à 1,5 ×). Testée au labo : plus de gains et moins de comptes cramés qu’une taille fixe.</p>
           <label class="field"><span>Étape</span><select id="c-phase"><option value="1">Phase 1 (+8 %)</option><option value="2">Phase 2 (+5 %)</option><option value="3">Compte financé</option></select></label>
           <label class="field"><span>Début de l'étape</span><input id="c-start" type="date"></label>
           <label class="field"><span>Solde actuel (MT5)</span><input id="c-bal" type="number" inputmode="decimal" placeholder="estimé d'après le journal"><em>$</em></label>
@@ -259,6 +260,6 @@
   <div class="sheet-bg" data-close></div>
   <div class="sheet" role="dialog" aria-modal="true" aria-label="Détail"><button class="sheet-x" data-close aria-label="Fermer">×</button><div id="sheet-body"></div></div>
 </div>
-<script src="app.js?v=202611111523"></script>
+<script src="app.js?v=202611111945"></script>
 </body>
 </html>

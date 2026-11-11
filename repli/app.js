@@ -78,8 +78,8 @@
   var parisToday = function () { return dn(parisYMD.format(new Date(nowMs()))); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 11/11 15:23';
-  var DEF = { size: 50000, lev: 0.5, phase: 1, start: '', bal: '', ct: { spx: 10, ndx: 10 }, step: 0.01 };   // FundedNext : 1 lot d'indice = 10 fois l'indice
+  var VERSION = 'version du 11/11 19:45';
+  var DEF = { size: 50000, lev: 0.5, dose: true, phase: 1, start: '', bal: '', ct: { spx: 10, ndx: 10 }, step: 0.01 };   // dose : taille dosee par la volatilite (base 0,75 x)   // FundedNext : 1 lot d'indice = 10 fois l'indice
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
   var trades = store.get('trades', []);
@@ -149,12 +149,48 @@
     return null;
   }
 
-  function lotsFor(k, price) {
-    var units = cfg.size * cfg.lev / price, ct = +cfg.ct[k] || 10, step = +cfg.step || 0.01;
-    var lots = Math.floor(units / ct / step + 1e-9) * step;
-    return { lots: +lots.toFixed(6), notional: lots * ct * price };
+  /* taille de position dosee par la volatilite (labo, 4e lot, journal 4.21) : base 0,75 x (volatilite de reference / volatilite
+     des 20 dernieres seances), entre 0,375 x et 1,5 x par indice. Reference = mediane de la volatilite 20 j sur les 750 seances
+     precedentes. Taille fixe possible dans Compte. */
+  var BASE = 0.75, SIGC = {};
+  function sd(a) { var m = 0, v = 0, i; for (i = 0; i < a.length; i++) m += a[i]; m /= a.length; for (i = 0; i < a.length; i++) v += (a[i] - m) * (a[i] - m); return Math.sqrt(v / (a.length - 1)); }
+  function sigTab(k) {
+    var c = IDX[k].c, n = c.length, key = n + ':' + c[n - 1];
+    if (SIGC[k] && SIGC[k].key === key) return SIGC[k];
+    var lr = [NaN], s20 = [NaN], i;
+    for (i = 1; i < n; i++) lr.push(Math.log(c[i] / c[i - 1]));
+    for (i = 1; i < n; i++) s20.push(i >= 20 ? sd(lr.slice(i - 19, i + 1)) : NaN);
+    return (SIGC[k] = { key: key, lr: lr, s20: s20, ref: {} });
   }
-  var stopPct = function () { return 0.015 / cfg.lev; };
+  function refAt(k, i) {
+    var T = sigTab(k);
+    if (T.ref[i] === undefined) {
+      var w = i < 770 ? [] : T.s20.slice(i - 750, i).filter(function (x) { return !isNaN(x); }).sort(function (a, b) { return a - b; }), m = w.length;
+      T.ref[i] = m ? (m % 2 ? w[(m - 1) / 2] : (w[m / 2 - 1] + w[m / 2]) / 2) : NaN;
+    }
+    return T.ref[i];
+  }
+  var clampLev = function (x) { return Math.max(BASE / 2, Math.min(BASE * 2, x)); };
+  function levAt(k, i) {                                             // taille d'un trade entre a la cloture i
+    if (!cfg.dose) return +cfg.lev;
+    var s = sigTab(k).s20[i], r = refAt(k, i);
+    return isNaN(s) || isNaN(r) || s <= 0 ? BASE : clampLev(BASE * r / s);
+  }
+  function levNow(k, p) {                                            // taille pour une entree ce soir, le prix p tenant lieu de cloture
+    if (!cfg.dose) return +cfg.lev;
+    var I = IDX[k], n = I.c.length, T = sigTab(k);
+    if (!(p > 0)) return levAt(k, n - 1);
+    var s = sd(T.lr.slice(n - 19, n).concat([Math.log(p / I.c[n - 1])])), r = refAt(k, n);
+    return isNaN(r) || s <= 0 ? BASE : clampLev(BASE * r / s);
+  }
+  var levTxt = function (lev) { return nf(lev, 2) + ' ×'; };
+  function lotsFor(k, price, lev) {
+    if (lev === undefined) lev = levNow(k, price);
+    var units = cfg.size * lev / price, ct = +cfg.ct[k] || 10, step = +cfg.step || 0.01;
+    var lots = Math.floor(units / ct / step + 1e-9) * step;
+    return { lots: +lots.toFixed(6), notional: lots * ct * price, lev: lev };
+  }
+  var stopFor = function (lev) { return 0.015 / lev; };             // regle des 3 % : 1,5 % du compte de risque par indice
   var levMax = function () { return cfg.phase == 3 ? 15 : 25; };
   function margeTxt(notional) { var m = notional / levMax(); return usd(m) + ' (' + nf(m / cfg.size * 100, 0) + ' %)'; }
   /* date de vente obligatoire : 10e jour de Bourse apres l'achat */
@@ -180,7 +216,7 @@
     var payout = null;
     if (cfg.phase == 3 && start !== null) { payout = start + 21; while (payout < today) payout += 14; }
     var risk = 0;
-    trades.forEach(function (t) { if (!t.d2) risk += t.p1 * stopPct() * t.lots * ctOf(t); });
+    trades.forEach(function (t) { if (!t.d2) { var lv = t.p1 * t.lots * ctOf(t) / size; risk += t.p1 * stopFor(lv) * t.lots * ctOf(t); } });
     return { size: size, bal: bal, est: est, equity: bal + open, open: open, target: target, maxFloor: size * 0.9, dayFloor: bal - size * 0.05,
       tradingDays: Object.keys(days).length, inactive: today - refDay, deadline: refDay + 60, payout: payout, risk: risk };
   }
@@ -248,10 +284,12 @@
     var o = { k: k, a: a, I: I, np: np, step: 1, tone: 'idle', title: '', sub: '', check: null, how: null, trade: null };
     var lastClose = I.c[I.c.length - 1], cur = live || lastClose;
     if (a.mode === 'pos') {
-      var tr = { real: !!jt, d1: jt ? dn(jt.d1) : a.entryDay, p1: jt ? jt.p1 : a.entry, lots: jt ? jt.lots : lotsFor(k, a.entry).lots, fee: jt ? (+jt.fee || 0) : 0 };
+      var ltr = lotsFor(k, a.entry, levAt(k, a.e));
+      var tr = { real: !!jt, d1: jt ? dn(jt.d1) : a.entryDay, p1: jt ? jt.p1 : a.entry, lots: jt ? jt.lots : ltr.lots, fee: jt ? (+jt.fee || 0) : 0 };
       if (jt) ct = ctOf(jt);
       tr.ct = ct;
-      tr.cur = cur; tr.pnl = (cur - tr.p1) * tr.lots * ct - tr.fee; tr.r = cur / tr.p1 - 1; tr.stop = cfg.phase == 3 ? tr.p1 * (1 - stopPct()) : null;
+      tr.lev = jt ? tr.p1 * tr.lots * ct / cfg.size : ltr.lev;
+      tr.cur = cur; tr.pnl = (cur - tr.p1) * tr.lots * ct - tr.fee; tr.r = cur / tr.p1 - 1; tr.stop = cfg.phase == 3 ? tr.p1 * (1 - stopFor(tr.lev)) : null;
       tr.hit = null;
       if (tr.stop) for (var q = 0; q < I.days.length; q++) if (I.days[q] > tr.d1 && I.l[q] <= tr.stop) { tr.hit = I.days[q]; break; }
       tr.deadline = deadline(a);
@@ -259,7 +297,7 @@
       if (tr.hit) {
         o.step = 3; o.tone = 'alert';
         o.title = 'Trade terminé par le stop le ' + longDay(tr.hit);
-        o.sub = 'Le prix est tombé sous ' + px(tr.stop) + ' : MT5 a fermé le trade tout seul (perte d\'environ ' + usd(tr.p1 * stopPct() * tr.lots * ct) + '). Note la sortie dans le Journal.';
+        o.sub = 'Le prix est tombé sous ' + px(tr.stop) + ' : MT5 a fermé le trade tout seul (perte d\'environ ' + usd(tr.p1 * stopFor(tr.lev) * tr.lots * ct) + '). Note la sortie dans le Journal.';
       } else if (a.forced) {
         o.step = 3; o.tone = 'act';
         o.title = 'Ce soir : sortir du trade, quoi qu\'il arrive';
@@ -312,7 +350,7 @@
   function howHtml(o) {
     var I = o.I;
     if (o.how === 'entry') {
-      var lt = lotsFor(o.k, o.np ? o.np.p : o.a.X), stop = (o.np ? o.np.p : o.a.X) * (1 - stopPct());
+      var lt = lotsFor(o.k, o.np ? o.np.p : o.a.X), stop = (o.np ? o.np.p : o.a.X) * (1 - stopFor(lt.lev));
       return '<div class="how"><b>Pour entrer</b> (seulement si la condition est remplie vers ' + hm(closeUTC(session) - 600000) + ') : dans MT5, ordre au marché sur <b>' + I.sym + '</b> → volume <b>' + nf(lt.lots, 2) + ' lots</b> (≈ ' + usd(lt.notional) + ') → <b>Buy</b>.' +
         (cfg.phase == 3 ? ' Puis ajoute un <b>stop à ' + px(stop) + '</b> (règle des 3 % de FundedNext).' : '') + '</div>';
     }
@@ -344,8 +382,8 @@
     var sub = (open.length ? 'Trade en cours : ' + open.join(' · ') + '. ' : 'Aucun trade en cours. ') +
       (todo.length ? 'Décide vers ' + hm(cl - 600000) + ', juste avant la fin de journée à New York (' + hm(cl) + ').' : 'Aucun indice ne peut donner d\'entrée ' + (when === 'Ce soir' ? 'ce soir' : when.toLowerCase()) + '.');
     $('hero').innerHTML = '<h3>' + cap(longDay(session)) + ' · fin de journée à ' + hm(cl) + '</h3><div class="big">' + esc(big) + '</div><p>' + esc(sub) + '</p>' +
-      '<div class="chips"><span class="chip">Compte ' + nf(cfg.size / 1000) + 'k · ' + (cfg.phase == 3 ? 'financé' : 'phase ' + cfg.phase) + '</span><span class="chip">' + nf(cfg.lev, 1) + ' × par indice</span>' +
-      (cfg.phase == 3 ? '<span class="chip">Stop ' + nf(stopPct() * 100, 1) + ' %</span>' : '') + '</div>' +
+      '<div class="chips"><span class="chip">Compte ' + nf(cfg.size / 1000) + 'k · ' + (cfg.phase == 3 ? 'financé' : 'phase ' + cfg.phase) + '</span><span class="chip">' + (cfg.dose ? 'Taille dosée · S&P ' + levTxt(levNow('spx', (nowPrice('spx', session) || {}).p)) + ' · Nasdaq ' + levTxt(levNow('ndx', (nowPrice('ndx', session) || {}).p)) : nf(cfg.lev, 2) + ' × par indice') + '</span>' +
+      (cfg.phase == 3 ? '<span class="chip">Stop : 1,5 % du compte par indice</span>' : '') + '</div>' +
       '<button class="btn" data-go="ordres">Voir quoi faire ce soir</button>';
 
     var left = cl - now, total = 6.5 * 3600000, done = Math.max(0, Math.min(1, 1 - left / total));
@@ -394,7 +432,7 @@
     var stale = parisToday() > nextTrading(Math.max(A.spx.last, A.ndx.last)) && nowMs() > closeUTC(nextTrading(Math.max(A.spx.last, A.ndx.last))) + 3 * 3600000;
     if (stale) out.push(['crit', '!', '<b>Prix en retard.</b> Le dernier prix de fin de journée date du ' + shortDay(Math.max(A.spx.last, A.ndx.last)) + '. Rouvre l\'application plus tard.']);
     if (s.inactive >= 45) out.push([s.inactive >= 55 ? 'crit' : 'warn', '!', '<b>Inactivité : ' + s.inactive + ' jours sans trade.</b> Le compte est désactivé à 60 jours (' + shortDay(s.deadline) + '). Ouvre et ferme un tout petit trade.']);
-    if (cfg.phase == 3) out.push(['', 'i', '<b>Stop obligatoire</b> sur chaque trade : ' + nf(stopPct() * 100, 1) + ' % sous le prix d\'entrée (risque total ≤ 3 %).']);
+    if (cfg.phase == 3) out.push(['', 'i', '<b>Stop obligatoire</b> sur chaque trade, placé pour risquer 1,5 % du compte par indice (risque total ≤ 3 %) : l’appli donne le prix du stop.']);
     if (s.payout !== null) out.push(['ok', '$', '<b>Prochain paiement possible le ' + shortDay(s.payout) + '</b> · environ ' + usd(Math.max(0, (s.bal - s.size) * 0.8)) + ' à ce jour (80 %).']);
     for (var d = today; d <= today + 10; d++) {
       if (HOLIDAYS.indexOf(ds(d)) >= 0 && new Date(d * DAY).getUTCDay() % 6) { out.push(['', 'i', '<b>Bourse de New York fermée le ' + longDay(d) + '.</b> Rien à faire ce jour-là.']); break; }
@@ -506,13 +544,13 @@
 
   /* trades termines : ceux du journal, puis ceux de la regle sur 12 mois */
   function doneList() {
-    var out = [], pos = cfg.size * cfg.lev;
+    var out = [];
     trades.filter(function (t) { return t.d2; }).forEach(function (t) {
       out.push({ id: 'j:' + t.id, k: t.idx, e: dn(t.d1), x: dn(t.d2), pe: t.p1, px: t.p2, g: t.p2 / t.p1 - 1, usd: pnlOf(t), src: 'journal', lots: t.lots });
     });
     var last = IDX.spx.days[IDX.spx.days.length - 1];
     legs(null).filter(function (t) { return !t.open && t.x >= last - 365; }).forEach(function (t) {
-      out.push({ id: 'r:' + t.k + ':' + t.e, k: t.k, e: t.e, x: t.x, pe: t.pe, px: t.px, g: t.gross, usd: pos * t.net, src: 'regle' });
+      out.push({ id: 'r:' + t.k + ':' + t.e, k: t.k, e: t.e, x: t.x, pe: t.pe, px: t.px, g: t.gross, usd: cfg.size * t.lev * t.net, src: 'regle', lev: t.lev });
     });
     return out.sort(function (a, b) { return b.x - a.x || b.e - a.e; });
   }
@@ -564,7 +602,7 @@
   }
   function orderLine(verb, k, p) {
     var sym = IDX[k] ? IDX[k].sym : '';
-    if (verb === 'ENTRER') { var lt = lotsFor(k, p); return '<span class="side buy">BUY</span><span><b>' + nf(lt.lots, 2) + ' lots</b> · ' + sym + (cfg.phase == 3 ? ' · stop <b>' + px(p * (1 - stopPct())) + '</b>' : '') + '</span>'; }
+    if (verb === 'ENTRER') { var lt = lotsFor(k, p); return '<span class="side buy">BUY</span><span><b>' + nf(lt.lots, 2) + ' lots</b> · ' + sym + (cfg.phase == 3 ? ' · stop <b>' + px(p * (1 - stopFor(lt.lev))) + '</b>' : '') + '<small> · taille ' + levTxt(lt.lev) + '</small></span>'; }
     if (verb === 'SORTIR') return '<span class="side out">' + ico('cross') + '</span><span>Croix <b>×</b> sur la ligne ' + sym + ' <small>(pas « Sell »)</small></span>';
     if (verb === 'STOP') return '<span>MT5 a fermé le trade : note la sortie au journal</span>';
     if (verb === 'GARDER') return '<span>Ne touche à rien</span>';
@@ -721,7 +759,7 @@
     var parts = id.split(':'), type = parts[0], html = '', chart = null, k, o;
     if (type === 'att') {
       o = plan(parts[1]); var a = o.a, C = conds(o), ok = o.tone === 'watch', nOk = (C.c1 ? 1 : 0) + (C.c2 ? 1 : 0), go = C.c1 && C.c2 && C.cur < a.X;
-      var lt = lotsFor(o.k, ok ? (o.np ? o.np.p : a.X) : a.P), stop = (o.np ? o.np.p : a.X) * (1 - stopPct());
+      var lt = lotsFor(o.k, ok ? (o.np ? o.np.p : a.X) : a.P), stop = (o.np ? o.np.p : a.X) * (1 - stopFor(lt.lev));
       var head = go ? ['watch', ico('enter') + ' ENTRER ce soir', 'Les deux conditions sont réunies : achète vers ' + hm(closeUTC(session) - 600000) + ' si ça tient jusqu\'à la fin de journée.']
         : !C.c1 ? ['idle', ico('wait') + ' EN ATTENTE', 'On attend que le ' + o.I.name + ' repasse au-dessus de sa moyenne des 200 jours, puis une forte baisse sur 2 jours.']
         : ['idle', ico('wait') + ' EN ATTENTE', 'La tendance est bonne. On attend maintenant une forte baisse sur 2 jours.'];
@@ -781,8 +819,8 @@
         '<div class="sh-pl ' + (t.usd >= 0 ? 'pos' : 'neg') + '">' + sUsd(t.usd) + '<small>' + pct(t.usd / cfg.size) + ' du compte</small></div>' +
         '<div class="big-state ' + (t.usd >= 0 ? 'ok' : 'idle') + '">' + (t.usd >= 0 ? ico('check') + ' Trade gagnant' : ico('cross') + ' Trade perdant') + '</div>' +
         '<div class="tiles">' + tile('Entrée', shortDay(t.e) + ' · ' + px(t.pe)) + tile('Sortie', shortDay(t.x) + ' · ' + px(t.px)) + tile('Durée', jours(t.x - t.e)) +
-        tile('Variation de l\'indice', pct(t.g), t.g >= 0 ? 'pos' : 'neg') + tile('Résultat', sUsd(t.usd), t.usd >= 0 ? 'pos' : 'neg') + tile('Lots', t.lots ? nf(t.lots, 2) : nf(lotsFor(k, t.pe).lots, 2)) + '</div>' +
-        (t.src === 'regle' ? '<p class="muted">Calculé sur ton compte de ' + usd(cfg.size) + ' à ' + nf(cfg.lev, 1) + ' ×, frais estimés compris.</p>' : '');
+        tile('Variation de l\'indice', pct(t.g), t.g >= 0 ? 'pos' : 'neg') + tile('Résultat', sUsd(t.usd), t.usd >= 0 ? 'pos' : 'neg') + tile('Lots', t.lots ? nf(t.lots, 2) : nf(lotsFor(k, t.pe, t.lev).lots, 2)) + '</div>' +
+        (t.src === 'regle' ? '<p class="muted">Calculé sur ton compte de ' + usd(cfg.size) + ', taille ' + levTxt(t.lev) + ' sur ce trade, frais estimés compris.</p>' : '');
       var I = IDX[k], ie = I.days.findIndex(function (d) { return d >= t.e; }), ix = I.days.findIndex(function (d) { return d >= t.x; });
       chart = { k: k, from: Math.max(0, ie - 5), to: Math.min(I.days.length, ix + 4), refs: [{ v: t.pe, label: 'entrée ' + px(t.pe), cls: 'ref-buy' }, { v: t.px, label: 'sortie ' + px(t.px), cls: 'ref-sell' }] };
     }
@@ -853,36 +891,36 @@
   var FEES = { 6000: 59.99, 15000: 119.99, 25000: 199.99, 50000: 299.99, 100000: 549.99, 200000: 1099.99 };
 
   /* jambes de trades : rendements quotidiens (cloture et plus bas), avec ou sans stop */
-  function legs(stop) {
+  function legs(withStop) {                                          // withStop : stop de la regle des 3 % (compte finance)
     var out = [];
     ['spx', 'ndx'].forEach(function (k) {
       var I = IDX[k], c = I.c, l = I.l, d = I.days, st = A[k].st;
       var all = st.trades.slice(); if (st.open !== null) all.push([st.open, c.length - 1, true]);
       all.forEach(function (t) {
-        var i = t[0], j = t[1], sp = stop ? c[i] * (1 - stop) : null, days = [], exitIdx = j, stopped = false;
+        var i = t[0], j = t[1], lev = levAt(k, i), sp = withStop ? c[i] * (1 - stopFor(lev)) : null, days = [], exitIdx = j, stopped = false;
         for (var q = i + 1; q <= j; q++) {
           var f = FIN * (d[q] - d[q - 1]) + (q === i + 1 ? COST : 0);
           if (sp && l[q] <= sp) { var rr = sp / c[q - 1] - 1 - f; days.push({ d: d[q], r: rr, rl: rr }); exitIdx = q; stopped = true; break; }
           days.push({ d: d[q], r: c[q] / c[q - 1] - 1 - f, rl: Math.min(l[q], c[q]) / c[q - 1] - 1 - f });
         }
         var gross = (stopped ? sp : c[exitIdx]) / c[i] - 1, net = days.reduce(function (s, x) { return (1 + s) * (1 + x.r) - 1; }, 0);
-        out.push({ k: k, e: d[i], x: d[exitIdx], pe: c[i], px: stopped ? sp : c[exitIdx], n: exitIdx - i, gross: gross, net: net, open: !!t[2] && !stopped, stopped: stopped, days: days });
+        out.push({ k: k, i: i, lev: lev, e: d[i], x: d[exitIdx], pe: c[i], px: stopped ? sp : c[exitIdx], n: exitIdx - i, gross: gross, net: net, open: !!t[2] && !stopped, stopped: stopped, days: days });
       });
     });
     return out;
   }
-  function byDay(L) { var b = {}; L.forEach(function (t) { t.days.forEach(function (x) { (b[x.d] = b[x.d] || []).push({ e: t.e, r: x.r, rl: x.rl }); }); }); return b; }
+  function byDay(L) { var b = {}; L.forEach(function (t) { t.days.forEach(function (x) { (b[x.d] = b[x.d] || []).push({ e: t.e, r: x.r, rl: x.rl, lev: t.lev }); }); }); return b; }
 
   /* compte FundedNext Stellar 2-Step simule depuis s0, compte crame remplace aussitot */
   function simAccount(s0, e0) {
-    var size = +cfg.size, lev = +cfg.lev, fee = FEES[size] || 299.99, Bns = byDay(legs(null)), Bs = byDay(legs(stopPct()));
+    var size = +cfg.size, fee = FEES[size] || 299.99, Bns = byDay(legs(false)), Bs = byDay(legs(true));
     var days = Object.keys(Bns).concat(Object.keys(Bs)).map(Number).concat(IDX.spx.days).filter(function (d) { return d > s0 && d <= e0; });
     days = days.filter(function (d, i) { return days.indexOf(d) === i; }).sort(function (a, b) { return a - b; });
     var ev = [], fees = fee, paid = 0, blown = 0, curve = [], a = { ph: 1, bal: size, since: s0, due: null, ref: false, n: 1 };
     ev.push([days[0] || s0, 'Achat du compte ' + a.n + ' (' + usd(fee, 2) + ')', '']);
     days.forEach(function (d) {
       var B = a.ph < 3 ? Bns : Bs, mine = (B[d] || []).filter(function (x) { return x.e >= a.since; });
-      var pnl = 0, worst = 0; mine.forEach(function (x) { pnl += size * lev * x.r; worst += size * lev * x.rl; });
+      var pnl = 0, worst = 0; mine.forEach(function (x) { pnl += size * x.lev * x.r; worst += size * x.lev * x.rl; });
       if (worst <= -0.05 * size || a.bal + worst <= 0.9 * size || pnl <= -0.05 * size) {
         blown++; ev.push([d, 'Compte ' + a.n + ' cramé en ' + (a.ph < 3 ? 'phase ' + a.ph : 'compte financé') + ' (perte ' + usd(Math.min(worst, pnl)) + ' dans la journée)', 'bad']);
         a = { ph: 1, bal: size, since: d, due: null, ref: false, n: a.n + 1 }; fees += fee; ev.push([d, 'Achat du compte ' + a.n + ' (' + usd(fee, 2) + ')', '']);
@@ -939,18 +977,18 @@
       for (var y = lastY; y >= Math.max(firstY, 2023); y--) sel.add(new Option(y === lastY ? y + ' · en cours' : String(y), y));
       sel.value = String(store.get('year', lastY)); if (!sel.value) sel.value = String(lastY);
     }
-    var Y0 = +sel.value, s0 = dn(Y0 + '-01-01') - 1, e0 = Math.min(lastDay, dn(Y0 + '-12-31')), size = +cfg.size, lev = +cfg.lev, pos = size * lev;
-    $('b-conf').textContent = 'Compte FundedNext Stellar 2-Step de ' + usd(size) + ', ' + nf(lev, 1) + ' × par indice (' + usd(pos) + ' par position), du 2 janvier au ' +
+    var Y0 = +sel.value, s0 = dn(Y0 + '-01-01') - 1, e0 = Math.min(lastDay, dn(Y0 + '-12-31')), size = +cfg.size;
+    $('b-conf').textContent = 'Compte FundedNext Stellar 2-Step de ' + usd(size) + ', ' + (cfg.dose ? 'taille dosée selon l’agitation du marché (0,375 à 1,5 × par indice)' : nf(cfg.lev, 2) + ' × par indice') + ', du 2 janvier au ' +
       (e0 === lastDay ? shortDay(lastDay) + ' (dernière clôture)' : '31 décembre') + '. Change la taille dans Compte.';
 
     /* trades de l'annee (sans stop : performance brute de la regle) */
-    var T = legs(null).filter(function (t) { return t.e > s0 && t.e <= e0; }).sort(function (a, b) { return a.e - b.e; });
+    var T = legs(false).filter(function (t) { return t.e > s0 && t.e <= e0; }).sort(function (a, b) { return a.e - b.e; });
     var closed = T.filter(function (t) { return !t.open; }), win = 0, sumG = 0, sumN = 0, dur = 0, best = -1, worst = 1;
     closed.forEach(function (t) { if (t.net > 0) win++; sumG += t.gross; sumN += t.net; dur += t.x - t.e; best = Math.max(best, t.net); worst = Math.min(worst, t.net); });
 
     /* courbe : performance cumulee en % du compte (jour par jour, frais compris) */
     var bd = byDay(T), days = IDX.spx.days.filter(function (d) { return d > s0 && d <= e0; }), cum = 0, peak = 0, mdd = 0, xs = [], ys = [];
-    days.forEach(function (d) { (bd[d] || []).forEach(function (x) { cum += lev * x.r; }); peak = Math.max(peak, cum); mdd = Math.min(mdd, cum - peak); xs.push(d); ys.push(cum * 100); });
+    days.forEach(function (d) { (bd[d] || []).forEach(function (x) { cum += x.lev * x.r; }); peak = Math.max(peak, cum); mdd = Math.min(mdd, cum - peak); xs.push(d); ys.push(cum * 100); });
     var sim = simAccount(s0, e0), net = sim.paid - sim.fees;
 
     $('b-kpis').innerHTML = [
@@ -958,7 +996,7 @@
       ['Gagnants', closed.length ? Math.round(win / closed.length * 100) + ' %' : '—', ''],
       ['Gain moyen', closed.length ? pct(sumN / closed.length, 2) : '—', 'par trade, indice'],
       ['Durée moyenne', closed.length ? nf(dur / closed.length, 1) + ' jours' : '—', ''],
-      ['Performance', pct(cum, 1), 'du compte à ' + nf(lev, 1) + ' ×'],
+      ['Performance', pct(cum, 1), cfg.dose ? 'du compte, taille dosée (moy. ' + levTxt(T.length ? T.reduce(function (s2, t) { return s2 + t.lev; }, 0) / T.length : BASE) + ')' : 'du compte à ' + nf(cfg.lev, 2) + ' ×'],
       ['Pire recul', pct(mdd, 1), 'du compte'],
       ['Comptes cramés', String(sim.blown), sim.blown ? 'remplacés aussitôt' : ''],
       ['Bilan FundedNext', sUsd(net), 'paiements − frais']
@@ -971,9 +1009,9 @@
     var st = sim.a, now = st.ph < 3 ? 'Compte ' + st.n + ' en phase ' + st.ph + ', ' + pct((st.bal - size) / size) + ' sur l\'étape' : 'Compte ' + st.n + ' financé, ' + usd(st.bal - size) + ' de gain en cours';
     $('b-acct').innerHTML = '<h2>Compte FundedNext simulé</h2><div class="signal" style="margin-top:0">' + sUsd(net) + '<small>' + usd(sim.paid) + ' de paiements, ' + usd(sim.fees, 0) + ' de frais. ' + esc(now) + '.</small></div>' +
       '<ul class="timeline">' + sim.ev.map(function (e) { return '<li><time>' + shortDay(e[0]) + '</time><span class="' + e[2] + '">' + esc(e[1]) + '</span></li>'; }).join('') + '</ul>' +
-      '<p class="muted">Limite de perte vérifiée sur le plus bas du jour ; stop de ' + nf(stopPct() * 100, 1) + ' % une fois financé.</p>';
+      '<p class="muted">Limite de perte vérifiée sur le plus bas du jour ; une fois financé, stop placé pour risquer 1,5 % du compte par indice.</p>';
 
-    var money = function (t) { return pos * t.net; };
+    var money = function (t) { return size * t.lev * t.net; };
     barChart($('b-bars'), {
       v: closed.map(money), label: 'Résultat de chaque trade en ' + Y0, height: 200, fmtAxis: function (v) { return nf(v, 0); },
       xl: closed.length ? [[0, shortDay(closed[0].e)], [closed.length - 1, shortDay(closed[closed.length - 1].e)]] : null,
@@ -1111,7 +1149,7 @@
     if (a.mode === 'pos') {
       cs.createPriceLine({ price: a.entry, color: col('--ink-3'), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: 'entrée' });
       cs.createPriceLine({ price: a.Y, color: good, lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'sortie ce soir' });
-      if (cfg.phase == 3) cs.createPriceLine({ price: a.entry * (1 - stopPct()), color: crit, lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'stop' });
+      if (cfg.phase == 3) cs.createPriceLine({ price: a.entry * (1 - stopFor(levAt(gidx, a.e))), color: crit, lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'stop' });
     } else if (a.possible) {
       cs.createPriceLine({ price: a.X, color: col('--accent'), lineWidth: 2, lineStyle: 2, axisLabelVisible: true, title: 'entrée ce soir' });
     }
@@ -1255,7 +1293,7 @@
 
   /* ---------- mode de test (adresse terminee par ?qa) : simuler un prix pour verifier chaque situation ---------- */
   if (/[?&]qa(&|$)/.test(location.search)) window.__qa = {
-    A: A, IDX: IDX, plan: plan, ladder: ladder,
+    A: A, IDX: IDX, plan: plan, ladder: ladder, levAt: levAt, levNow: levNow, legs: legs,
     jusqua: function (iso) { var lim = dn(iso); PROV = {}; qaFreeze = true; clearInterval(liveTimer); liveTimer = 1; Object.keys(IDX).forEach(function (k) { var I = IDX[k], n = I.days.filter(function (d) { return d <= lim; }).length;
       ['c', 'o', 'h', 'l', 'days'].forEach(function (f) { I[f] = I[f].slice(0, n); }); A[k] = analyze(k); }); LIVEQ = {}; renderAll(); return session; },
     prix: function (k, p, retardMin) { var d = retardMin || 0; LIVEQ[k] = { p: p, at: nowMs(), t: nowMs() - d * 60000, day: session, src: d ? 'différé ' + d + ' min' : 'test', delayed: d > 0 }; refreshLive(); return ladder(plan(k)).verb; },
@@ -1283,12 +1321,12 @@
 
   /* ---------- reglages ---------- */
   function loadCfg() {
-    $('c-size').value = String(cfg.size); $('c-lev').value = String(cfg.lev); $('c-phase').value = String(cfg.phase); $('c-start').value = cfg.start || '';
+    $('c-size').value = String(cfg.size); $('c-lev').value = cfg.dose ? 'dose' : String(cfg.lev); $('c-phase').value = String(cfg.phase); $('c-start').value = cfg.start || '';
     $('c-bal').value = cfg.bal || ''; $('c-ct-spx').value = cfg.ct.spx; $('c-ct-ndx').value = cfg.ct.ndx; $('c-step').value = cfg.step;
   }
   ['c-size', 'c-lev', 'c-phase', 'c-start', 'c-bal', 'c-ct-spx', 'c-ct-ndx', 'c-step'].forEach(function (id) {
     $(id).addEventListener('change', function () {
-      cfg.size = +$('c-size').value; cfg.lev = +$('c-lev').value; cfg.phase = +$('c-phase').value; cfg.start = $('c-start').value; cfg.bal = $('c-bal').value;
+      cfg.size = +$('c-size').value; cfg.dose = $('c-lev').value === 'dose'; if (!cfg.dose) cfg.lev = +$('c-lev').value; cfg.phase = +$('c-phase').value; cfg.start = $('c-start').value; cfg.bal = $('c-bal').value;
       cfg.ct = { spx: +$('c-ct-spx').value || 1, ndx: +$('c-ct-ndx').value || 1 }; cfg.step = +$('c-step').value || 0.01;
       store.set('cfg', cfg); renderAll();
     });

@@ -59,9 +59,9 @@ def hicp():
 
 
 def index_series(sym):
-    """Clotures et plus bas quotidiens d'un indice sur 5 ans ; la seance du jour est retiree tant qu'elle n'est pas terminee."""
+    """Clotures et plus bas quotidiens d'un indice sur 10 ans (3 ans d'historique avant chaque trade pour le dosage) ; la seance du jour est retiree tant qu'elle n'est pas terminee."""
     from zoneinfo import ZoneInfo
-    j = json.loads(get(f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=5y'))['chart']['result'][0]
+    j = json.loads(get(f'https://query1.finance.yahoo.com/v8/finance/chart/{sym}?interval=1d&range=10y'))['chart']['result'][0]
     ny = ZoneInfo('America/New_York')
     q = j['indicators']['quote'][0]
     rows = [(dt.datetime.fromtimestamp(t, ny).date(), round(c, 2), round(min(lo or c, c), 2), round(o or c, 2), round(max(hi or c, c, o or c), 2))
