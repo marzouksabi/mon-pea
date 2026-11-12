@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 12/11 16:27';
+  var VERSION = 'version du 12/11 19:49';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -40,7 +40,8 @@
     flame: '<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.4-5.4 3.6-8.3.4 1.9 1.4 3 2.6 3.6-.1-2.7.9-5.2 3.1-7.1-.2 3.1 4.7 5.5 4.7 11.8 0 3.6-3 6.2-7.5 6.2z"/>',
     sync: '<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 20v-4h-4"/>',
     wave: '<path d="M3 12c2.5-5 5-5 7.5 0s5 5 7.5 0"/><path d="M18 12h3"/>',
-    flat: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>'
+    flat: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
+    flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>'
   };
   var ico = function (n, cls) { return '<svg class="ico' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[n] || '') + '</svg>'; };
   var store = {
@@ -113,7 +114,12 @@
   ORDER.forEach(function (c) { if (!(cfg.ct[c] > 0)) cfg.ct[c] = DEF_CT[c]; });
   var fee = function () { return Math.round(PRICE[cfg.size] * (cfg.swap ? 1.1 : 1) * 100) / 100; };
   var BUDGET = 0.0285, CAP = 0.029, LIMIT = 0.03, TRIM = 0.0297, COST = 0.00015;
-  var engineOpts = function () { return { target: cfg.vol, band: true, cost: COST, budget: BUDGET, cap: CAP, riskFrom: 'entry' }; };
+  /* étape du compte : pendant le challenge, volatilité visée 8 % (9e lot du labo) ; sur le compte financé, réglage choisi (6 % ou 4 %) */
+  if (cfg.phase !== 'finance') cfg.phase = 'challenge';
+  var CH_VOL = 0.08;
+  var curVol = function () { return cfg.phase === 'challenge' ? CH_VOL : cfg.vol; };
+  var engineOpts = function (v) { return { target: v || curVol(), band: true, cost: COST, budget: BUDGET, cap: CAP, riskFrom: 'entry' }; };
+  function getRun(v) { S.runs = S.runs || {}; if (!S.runs[v]) S.runs[v] = E.run(S.D, engineOpts(v)); return S.runs[v]; }
   var pxf = function (code, v) {
     var m = MK[code];
     if (m.f === 'idx') return nf(v, v < 1000 ? 2 : 1);
@@ -130,7 +136,7 @@
       return fetch(u, { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error(u); return r.json(); });
     })).then(function (files) {
       S.D = E.decode(files); S.updated = files[1].updated || files[0].updated; S.loadedAt = Date.now();
-      S.off = E.run(S.D, engineOpts()); S.bil = null;
+      S.runs = {}; S.off = getRun(curVol()); S.bil = null; S.prov = null;
     });
   }
   var TICKERS = (function () { var t = ['FX_IDC:USDHKD']; ORDER.forEach(function (c) { t.push(MK[c].tv); if (MK[c].spot) t.push(MK[c].spot); }); return t; })();
@@ -186,7 +192,7 @@
     if (!m.pend.length) return S.off;
     var row = liveRow();
     if (!row) return null;
-    var key = m.pend.join(',') + '|' + S.qTime + '|' + cfg.vol;
+    var key = m.pend.join(',') + '|' + S.qTime + '|' + curVol();
     if (S.prov && S.provKey === key) return S.prov;
     var extra = m.pend.map(function (d, i) { return i === m.pend.length - 1 ? row : null; });
     S.prov = E.run(S.D, Object.assign({ extra: extra }, engineOpts())); S.provKey = key;
@@ -351,6 +357,7 @@
       big = 'Pas de séance aujourd\'hui';
       sub = 'Prochaine séance : ' + longDay(m.next) + ', ordres à passer avant ' + hm(closeUTC(m.next)) + '. Ci-dessous, les ordres du dernier soir (' + longDay(day) + ') : vérifiez qu\'ils ont bien été passés.';
     }
+    chips.unshift('<span class="chip">' + ico(cfg.phase === 'challenge' ? 'flag' : 'check') + (cfg.phase === 'challenge' ? 'Challenge · volatilité 8 %' : 'Compte financé · volatilité ' + upct(cfg.vol, 0)) + '</span>');
     if (rev) chips.push('<span class="chip">' + ico('sync') + 'Soir de révision : tous les stops replacés</span>');
     else chips.push('<span class="chip">' + ico('sync') + 'Révision ' + (nr.k === 1 ? 'au prochain soir' : 'dans ' + nr.k + ' séances') + ' (' + shortDay(nr.day) + ')</span>');
     if (m.late) chips.push('<span class="chip">' + ico('alert') + 'Cours officiels en retard</span>');
@@ -385,6 +392,9 @@
     od.hits.forEach(function (h) {
       notes.push(['warn', 'stop', '<b>' + h.code + ' : stop touché aujourd\'hui.</b> MT5 a fermé la position. ' + (lots[IX[h.code]] ? 'Le soir de révision la relance (voir les ordres).' : 'Elle reste fermée jusqu\'à la prochaine révision (' + longDay(nr.day) + ').')]);
     });
+    if (cfg.phaseSince && dn(cfg.phaseSince) >= day - 7) notes.push(['warn', 'alert', cfg.phase === 'finance'
+      ? '<b>Nouveau compte financé :</b> il démarre vide. Ouvrez toutes les positions de l\'onglet Positions avec leurs stops, puis suivez les ordres du soir.'
+      : '<b>Nouveau challenge :</b> il démarre vide. Ouvrez toutes les positions de l\'onglet Positions avec leurs stops, puis suivez les ordres du soir.']);
     if (rev) notes.push(['', 'sync', '<b>Soir de révision.</b> Le suivi de tendance revoit ses 18 marchés et tous les stops sont replacés depuis le cours de ce soir. Les positions dont la taille ne change pas n\'ont qu\'un stop à déplacer.']);
     var zero = []; ORDER.forEach(function (c) { var j = IX[c]; if (run.HELD[j][t] && !lots[j]) zero.push(c); });
     if (zero.length) notes.push(['', 'info', '<b>Trop petit pour ce compte :</b> ' + zero.join(', ') + '. La position voulue fait moins d\'un demi-pas de ' + nf(cfg.step, 2) + ' lot : elle est laissée de côté.']);
@@ -461,7 +471,7 @@
   /* ---- Bilan ---- */
   function bilanData() {
     if (S.bil && S.bil.key === cfg.size + '|' + cfg.swap + '|' + cfg.vol) return S.bil;
-    var run = S.off, days = S.D.days, n = days.length, R = run.R, RL = run.RL, first = days.findIndex(function (d) { return yearOf(d) >= 2012; });
+    var run = getRun(cfg.vol), CHR = getRun(CH_VOL), ch = { r: CHR.R, rl: CHR.RL }, days = S.D.days, n = days.length, R = run.R, RL = run.RL, first = days.findIndex(function (d) { return yearOf(d) >= 2012; });
     var years = {}, months = {};
     for (var t = first; t < n; t++) {
       var y = yearOf(days[t]), mo = new Date(days[t] * DAY).getUTCMonth();
@@ -471,14 +481,14 @@
     for (var s = first; s < n; s += 5) {
       var e = days.findIndex(function (d) { return d >= days[s] + 1461; });
       if (e < 0) break;
-      starts.push(E.onestep(R, RL, s, e, cfg.size, f).net);
+      starts.push(E.onestep(R, RL, s, e, cfg.size, f, false, 0, ch).net);
     }
     S.bil = { key: cfg.size + '|' + cfg.swap + '|' + cfg.vol, first: first, years: years, months: months, starts: starts };
     return S.bil;
   }
   function median(a) { var b = a.slice().sort(function (x, y) { return x - y; }), k = b.length; return k ? (k % 2 ? b[(k - 1) / 2] : (b[k / 2 - 1] + b[k / 2]) / 2) : 0; }
   function renderBilan() {
-    var B = bilanData(), run = S.off, days = S.D.days, n = days.length, R = run.R, RL = run.RL, Y0 = 2012, Yn = yearOf(days[n - 1]);
+    var B = bilanData(), run = getRun(cfg.vol), CHR = getRun(CH_VOL), days = S.D.days, n = days.length, R = run.R, RL = run.RL, Y0 = 2012, Yn = yearOf(days[n - 1]);
     if (S.byear < Y0 || S.byear > Yn) S.byear = 2020;
     var Y = S.byear, yrs = [];
     for (var y = Y0; y <= Yn; y++) yrs.push(y);
@@ -487,7 +497,7 @@
     if (chip) $('b-years').scrollLeft = chip.offsetLeft - $('b-years').clientWidth / 2 + chip.clientWidth / 2;
     var sans = S.bmode === 'sans';
     $('b-mode').innerHTML = '<button data-bmode="avec" aria-pressed="' + !sans + '">Avec retraits</button><button data-bmode="sans" aria-pressed="' + sans + '">Sans retraits</button>';
-    var s0 = days.findIndex(function (d) { return yearOf(d) >= Y; }), sim = E.onestep(R, RL, Math.max(0, s0 - 1), n - 1, cfg.size, fee(), sans);
+    var s0 = days.findIndex(function (d) { return yearOf(d) >= Y; }), sim = E.onestep(R, RL, Math.max(0, s0 - 1), n - 1, cfg.size, fee(), sans, 0, { r: CHR.R, rl: CHR.RL });
     var span = (n - s0) / 252, x = Array.prototype.slice.call(R, s0), sum = 0, mean, sd = 0, eq = [], dd = [], pk = 0, mdd = 0;
     x.forEach(function (v) { sum += v; eq.push(sum); pk = Math.max(pk, sum); dd.push(sum - pk); mdd = Math.min(mdd, sum - pk); });
     mean = sum / x.length; x.forEach(function (v) { sd += (v - mean) * (v - mean); }); sd = Math.sqrt(sd / (x.length - 1));
@@ -592,7 +602,7 @@
       '<li>Règle des 3 % respectée chaque soir : stops placés pour que la perte possible de toutes les positions, mesurée depuis le prix d\'entrée, reste sous 2,9 % du compte. Taille gardée entre deux recalages du stop.</li>' +
       '<li>Frais : 0,015 % de chaque montant échangé, plus 0,02 % sur chaque stop touché. Pas de frais de nuit (option Swap-Free). Arrondi des lots non compté.</li>' +
       '<li>Compte Stellar 1-Step : challenge à +10 % en 2 jours de trading au moins, puis compte financé qui repart du solde de départ. Perte du jour limitée à 3 % et perte maximale à 6 % sous le solde de départ (fixe), vérifiées au plus bas de chaque journée. Retrait tous les 5 jours de bourse, 80 % des gains, prix du challenge remboursé au 3e retrait. Compte cramé : nouveau challenge acheté ' + usd(fee(), 2) + '.</li>' +
-      '<li>Les mêmes ordres sont suivis pendant le challenge et sur le compte financé (la règle des 3 % ne s’impose qu’au compte financé, l’appli l’applique partout).</li>' +
+      '<li>Pendant le challenge, le moteur vise 8 % de volatilité au lieu de ' + upct(cfg.vol, 0) + ' (9e lot du labo : challenge réussi en 8 à 11 mois au lieu de 14 à 17, valeur médiane sur 4 ans +28 à +38 %, mais plus de challenges ratés). Les stops et le plafond de 2,9 % restent appliqués partout.</li>' +
       '<li>Le laboratoire (2009-2026) avait oublié les frais de rééquilibrage et laissait le risque dépasser 3 % un soir sur trois : l\'appli corrige les deux, ses chiffres sont donc plus bas et plus réalistes.</li>' +
       '<li>Résultats passés simulés : ils ne garantissent rien pour l\'avenir. Je ne suis pas conseiller financier.</li></ul>';
   }
@@ -702,7 +712,7 @@
     var stops = closed.filter(function (tr) { return tr.why === 'stop'; }).length;
     var when = function (tr) { return tr.code + ' · ' + shortDay(days[tr.t0]) + ' ' + yearOf(days[tr.t0]); };
     var label = Y === -1 ? 'depuis 2012' : 'ouverts en ' + Y;
-    $('t-sum').innerHTML = '<div class="card-head"><h2>' + L.length + ' trade' + (L.length > 1 ? 's' : '') + ' ' + label + '</h2><span class="small">montants pour un compte de ' + nf(size) + ' $, frais compris</span></div>' +
+    $('t-sum').innerHTML = '<div class="card-head"><h2>' + L.length + ' trade' + (L.length > 1 ? 's' : '') + ' ' + label + '</h2><span class="small">moteur ' + (cfg.phase === 'challenge' ? 'du challenge (8 %)' : 'du compte financé (' + upct(cfg.vol, 0) + ')') + ', montants pour ' + nf(size) + ' $, frais compris</span></div>' +
       '<div class="stat4 q6">' +
       '<div><span>Résultat total</span><b class="' + (sum(L) >= 0 ? 'pos' : 'neg') + '">' + sUsd(sum(L) * size) + '</b><small>' + pct(sum(L)) + ' du compte</small></div>' +
       '<div><span>Trades gagnants</span><b>' + (closed.length ? Math.round(win.length / closed.length * 100) : 0) + ' %</b><small>' + win.length + ' sur ' + closed.length + ' fermés</small></div>' +
@@ -750,7 +760,7 @@
 
   /* ---- Compte ---- */
   function renderCompte() {
-    $('c-size').value = String(cfg.size); $('c-swap').checked = !!cfg.swap; $('c-vol').value = String(cfg.vol); $('c-step').value = String(cfg.step);
+    $('c-phase').value = cfg.phase; $('c-size').value = String(cfg.size); $('c-swap').checked = !!cfg.swap; $('c-vol').value = String(cfg.vol); $('c-step').value = String(cfg.step);
     $('c-price').innerHTML = 'Prix du compte : <b>' + usd(fee(), 2) + '</b>' + (cfg.swap ? ' (dont 10 % pour l\'option Swap-Free)' : '') + ', remboursé au 3e retrait. Prix publics de novembre 2026 : vérifiez sur le site de FundedNext avant d\'acheter.' +
       (cfg.size < 25000 ? '<br>Sur un petit compte, beaucoup de positions voulues tombent sous 0,01 lot et sont laissées de côté : le résultat réel s\'écarte du bilan. 50 000 $ conseillé.' : '');
     if (!$('c-ct').dataset.built) {
@@ -762,7 +772,7 @@
       ['var(--e1)', 'Repli', 'Sur le S&P 500 et le Nasdaq-100 : achat après une forte baisse de deux jours quand l\'indice reste au-dessus de sa moyenne de 200 jours, revente au premier rebond (10 séances au plus). Taille dosée selon l\'agitation du marché.'],
       ['var(--e2)', 'Tendance', 'Sur 18 marchés (indices, devises, or, argent) : à l\'achat si le marché a monté sur 12 mois, à la vente s\'il a baissé. Révisé une séance sur cinq, chaque marché pesant selon sa propre agitation.'],
       ['var(--e3)', 'Indices', 'S&P 500 et Nasdaq-100 tenus quand ils sont au-dessus de leur moyenne de 200 jours, d\'autant moins que le marché est agité.'],
-      ['var(--accent)', 'Combinaison et règle des 3 %', 'Les trois moteurs pèsent à risque égal pour viser ' + upct(cfg.vol, 0) + ' de volatilité par an. Chaque position a un stop ; ensemble, les stops ne peuvent pas coûter plus de 2,9 % du compte, pertes en cours comprises (règle FundedNext : 3 % au plus à tout moment).']
+      ['var(--accent)', 'Combinaison et règle des 3 %', 'Les trois moteurs pèsent à risque égal pour viser ' + upct(cfg.vol, 0) + ' de volatilité par an sur le compte financé, 8 % pendant le challenge pour le réussir plus vite. Chaque position a un stop ; ensemble, les stops ne peuvent pas coûter plus de 2,9 % du compte, pertes en cours comprises (règle FundedNext : 3 % au plus à tout moment).']
     ].map(function (x) { return '<div class="m"><i style="background:' + x[0] + '"></i><span><b>' + x[1] + '.</b> ' + x[2] + '</span></div>'; }).join('');
     $('c-gloss').innerHTML = [
       ['Lot', 'Unité de taille dans MT5. Un lot d\'indice vaut 10 fois l\'indice ; un lot de devise 100 000 unités ; un lot d\'or 100 onces.'],
@@ -775,13 +785,13 @@
     ].map(function (g) { return '<dt>' + g[0] + '</dt><dd>' + g[1] + '</dd>'; }).join('');
     $('c-version').textContent = 'Triade · ' + VERSION + ' · cours officiels mis à jour le ' + (S.updated ? new Date(S.updated).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
   }
-  ['c-size', 'c-swap', 'c-vol', 'c-step'].forEach(function (id) {
+  ['c-phase', 'c-size', 'c-swap', 'c-vol', 'c-step'].forEach(function (id) {
     $(id).addEventListener('change', function () {
-      var vol = cfg.vol;
-      cfg.size = +$('c-size').value; cfg.swap = $('c-swap').checked; cfg.vol = +$('c-vol').value; cfg.step = +$('c-step').value;
+      if ($('c-phase').value !== cfg.phase) cfg.phaseSince = ds(nyToday());
+      cfg.phase = $('c-phase').value; cfg.size = +$('c-size').value; cfg.swap = $('c-swap').checked; cfg.vol = +$('c-vol').value; cfg.step = +$('c-step').value;
       store.set('cfg', cfg); S.bil = null; S.prov = null;
-      if (vol !== cfg.vol) S.off = E.run(S.D, engineOpts());
-      if (S.off) S.off._lots = null;
+      Object.keys(S.runs || {}).forEach(function (k) { S.runs[k]._lots = null; S.runs[k]._risk = null; });
+      S.off = getRun(curVol());
       render(); toast('Réglage enregistré');
     });
   });

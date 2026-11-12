@@ -335,11 +335,11 @@
      du solde de départ ; perte du jour 3 % et perte maximale 6 % fixe sous le solde de départ, vérifiées au plus bas du jour ;
      retrait tous les 5 jours de bourse à 80 %, prix du challenge remboursé au 3e retrait ; compte cramé = nouveau challenge.
      noWithdraw : aucun retrait, les gains restent sur le compte financé. */
-  function onestep(r, rl, s0, e0, size, fee, noWithdraw, margin) {   // margin : part du compte gardée au-dessus du départ avant de retirer
+  function onestep(r, rl, s0, e0, size, fee, noWithdraw, margin, ch) {   // margin : part gardée avant de retirer ; ch : {r, rl} du mode challenge
     var paid = 0, fees = fee, burnt = 0, passed = 0, ev = [{ t: s0, type: 'achat', v: -fee }], bal = [], floor = [];
     var fresh = function () { return { ph: 1, eq: size, days: 0, next: 0, n: 0 }; }, a = fresh();
     for (var i = s0 + 1; i <= e0; i++) {
-      var pnl = size * r[i], low = size * rl[i];
+      var rr = a.ph === 1 && ch ? ch.r : r, rrl = a.ph === 1 && ch ? ch.rl : rl, pnl = size * rr[i], low = size * rrl[i];
       a.days++;
       if (low <= -0.03 * size || a.eq + low <= 0.94 * size) {
         burnt++; fees += fee;

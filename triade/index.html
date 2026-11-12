@@ -13,7 +13,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="app.css?v=202611121627">
+<link rel="stylesheet" href="app.css?v=202611121949">
 <script>try{var t=JSON.parse(localStorage.getItem("triade:theme"));if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
 </head>
 <body>
@@ -106,7 +106,10 @@
               <option value="100000">Stellar 1-Step 100 000 $</option><option value="200000">Stellar 1-Step 200 000 $</option>
             </select></label>
             <label class="sw"><input type="checkbox" id="c-swap"><span><b>Option Swap-Free</b><small>Pas de frais de nuit ; le compte coûte 10 % de plus. Recommandée : les positions sont gardées des semaines.</small></span></label>
-            <label>Volatilité visée<select id="c-vol">
+            <label>Étape du compte<select id="c-phase">
+              <option value="challenge">Challenge (objectif +10 %) : volatilité 8 %</option><option value="finance">Compte financé</option>
+            </select></label>
+            <label>Volatilité visée sur le compte financé<select id="c-vol">
               <option value="0.06">6 % par an (normal)</option><option value="0.04">4 % par an (prudent)</option>
             </select></label>
             <label>Pas des lots sur MT5<select id="c-step"><option value="0.01">0,01 lot</option><option value="0.1">0,1 lot</option></select></label>
@@ -141,7 +144,7 @@
   </main>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script src="engine.js?v=202611121627"></script>
-<script src="app.js?v=202611121627"></script>
+<script src="engine.js?v=202611121949"></script>
+<script src="app.js?v=202611121949"></script>
 </body>
 </html>
