@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 12/11 21:44';
+  var VERSION = 'version du 12/11 22:10';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -439,6 +439,11 @@
       fam[MK[code].f][v > 0 ? 0 : 1] += val / cfg.size;
     });
     var l2 = function (v) { return nf(Math.abs(v), cfg.step < 0.1 ? 2 : 1); };
+    var nrv = nextRevision(run, t, day), flatTxt = function (x) {
+      var j = IX[x.code], hit = null;
+      run.events.forEach(function (e) { if (e.type === 'stop' && e.j === j && e.t <= t) hit = e; });
+      return (hit ? 'Stop touché le ' + shortDay(dayOf(run, hit.t)) + ' : MT5 a fermé la position. ' : '') + 'Rien à faire : ne pas la rouvrir avant la révision du ' + longDay(nrv.day) + ', où le moteur décide de la reprendre ou non.';
+    };
     var since = function (x) { if (!x.tr) return '—'; var d = dayOf(run, x.tr.t0); return shortDay(d) + (yearOf(d) !== yearOf(day) ? ' ' + yearOf(d) : ''); };
     $('p-sum').innerHTML = '<div class="card-head"><h2>Après les ordres du ' + longDay(day) + '</h2><span class="small">' + (run === S.off ? 'cours officiels' : 'cours du moment') + '</span></div>' +
       '<div class="stat4 q4"><div><span>Positions</span><b>' + tot.n + '</b><small>' + tot.long + ' achat' + (tot.long > 1 ? 's' : '') + ', ' + tot.short + ' vente' + (tot.short > 1 ? 's' : '') + '</small></div>' +
@@ -446,12 +451,12 @@
       '<div><span>Risque aux stops</span><b>' + upct(tot.risk / cfg.size, 2) + '</b><small>' + usd(tot.risk) + ' sur 3 % max</small></div>' +
       '<div><span>Latent (estimé)</span><b class="' + (tot.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tot.pnl) + '</b><small>depuis l\'entrée</small></div></div>';
     var tr = rows.map(function (x) {
-      if (x.flat) return '<tr><td class="m"><b>' + x.code + '</b><span>' + esc(MK[x.code].n) + '</span></td><td><span class="side f">Stoppé</span></td><td colspan="6" style="text-align:left;color:var(--ink-3)">À plat jusqu\'à la prochaine révision</td></tr>';
+      if (x.flat) return '<tr><td class="m"><b>' + x.code + '</b><span>' + esc(MK[x.code].n) + '</span></td><td><span class="side f">Stoppé</span></td><td colspan="6" style="text-align:left;color:var(--ink-3);white-space:normal">' + flatTxt(x) + '</td></tr>';
       return '<tr><td class="m"><b>' + x.code + '</b><span>' + esc(MK[x.code].n) + '</span></td><td><span class="side ' + (x.v > 0 ? 'l">Achat' : 's">Vente') + '</span></td><td>' + since(x) + '</td><td>' + l2(x.v) + '</td>' +
         '<td>' + pxf(x.code, x.st.lvl) + '</td><td>' + x.st.unit + '</td><td>' + usd(x.risk) + '</td><td class="' + (x.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.pnl) + '</td></tr>';
     }).join('');
     var cards = rows.map(function (x) {
-      if (x.flat) return '<div class="pc"><div class="h"><b>' + x.code + '</b><span class="side f">Stoppé</span></div><div class="small" style="margin-top:6px">À plat jusqu\'à la prochaine révision</div></div>';
+      if (x.flat) return '<div class="pc"><div class="h"><b>' + x.code + '</b><span class="side f">Stoppé</span></div><div class="small" style="margin-top:6px">' + flatTxt(x) + '</div></div>';
       return '<div class="pc"><div class="h"><span><b>' + x.code + '</b> <span class="small">' + esc(MK[x.code].n) + '</span></span><span class="side ' + (x.v > 0 ? 'l">Achat ' : 's">Vente ') + l2(x.v) + '</span></div>' +
         '<div class="g"><div><span>Depuis</span><b>' + since(x) + '</b></div><div><span>Stop</span><b>' + pxf(x.code, x.st.lvl) + '</b></div><div><span>Risque</span><b>' + usd(x.risk) + '</b></div><div><span>Latent</span><b class="' + (x.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.pnl) + '</b></div></div></div>';
     }).join('');
