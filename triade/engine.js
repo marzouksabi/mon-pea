@@ -21,7 +21,7 @@
       f.d.forEach(function (v, n) { x = n ? x + v : v; days.push(x); });
       CODES.forEach(function (c) {
         var s = f.m[c], m = M[c], p = Math.pow(10, s.k), cc = 0;
-        m.n = s.n; m.k = s.k;
+        m.n = s.n; m.k = s.k; if (s.f !== undefined && m.f === undefined) m.f = s.f;
         for (var n = 0; n < s.c.length; n++) {
           cc = n ? cc + s.c[n] : s.c[n];
           m.c.push(cc / p); m.o.push((cc + s.o[n]) / p); m.h.push((cc + s.h[n]) / p); m.l.push((cc - s.l[n]) / p);
@@ -128,12 +128,15 @@
       }
     });
     // ---- 2) T1 : signe du rendement sur 12 mois, 10 % de volatilité par marché, portefeuille ramené à 6 %
-    var HT = [], w = new Float64Array(NI), revisions = [];
+    var HT = [], w = new Float64Array(NI), revisions = [], skip = {};
+    (opts.t1Exclude || []).forEach(function (c) { skip[CODES.indexOf(c)] = 1; });
+    var FIRST = CODES.map(function (c) { return D.m[c].f || 0; });
     for (j = 0; j < NI; j++) HT.push(new Float64Array(T));
     for (t = 1; t < T; t++) {
       if ((g0 + t) % 5 === 0 && t >= 260) {
         var nw = new Float64Array(NI), any = false;
         for (j = 0; j < NI; j++) {
+          if (skip[j] || t - FIRST[j] < 260) continue;
           var v60 = std(RET[j], t - 59, t + 1) * Math.sqrt(252);
           if (v60 > 0) { nw[j] = sign(C[j][t] / C[j][t - 252] - 1) * 0.10 / v60; if (nw[j]) any = true; }
         }
