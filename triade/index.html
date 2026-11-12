@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Triade">
+<meta name="theme-color" content="#eef0fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c0d18" media="(prefers-color-scheme: dark)">
+<title>Triade</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css?v=202611121236">
+<script>try{var t=JSON.parse(localStorage.getItem("triade:theme"));if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body>
+<div class="shell">
+  <nav class="nav" aria-label="Navigation">
+    <div class="brand" aria-hidden="true"><img src="icons/icon-192.png" alt=""></div>
+    <button data-v="soir" aria-label="Ce soir"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/><path d="M15.5 4.5v3M14 6h3"/></svg><span>Ce soir</span></button>
+    <button data-v="pos" aria-label="Positions"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M3.5 9.5h17M9 9.5V20"/></svg><span>Positions</span></button>
+    <button data-v="bilan" aria-label="Bilan"><svg viewBox="0 0 24 24"><path d="M4 20V11M10 20V5M16 20v-6M21 20H3"/></svg><span>Bilan</span></button>
+    <button data-v="compte" aria-label="Compte"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg><span>Compte</span></button>
+  </nav>
+
+  <main>
+    <header class="top">
+      <div>
+        <p class="eyebrow" id="today">—</p>
+        <h1 id="title">Ce soir</h1>
+      </div>
+      <div class="top-right">
+        <p class="stamp"><span class="live-dot" id="live-dot"></span><span id="stamp">Chargement des cours…</span></p>
+        <button class="icon-btn" id="theme-btn" type="button" aria-label="Changer de thème">
+          <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="boot" id="boot"><div class="spin"></div><p>Calcul du moteur sur 18 marchés…</p></div>
+
+    <!-- CE SOIR -->
+    <section class="view" id="v-soir" data-title="Ce soir" hidden>
+      <div class="grid">
+        <article class="card hero s8" id="s-hero"></article>
+        <article class="card s4" id="s-risk"></article>
+        <article class="card s12" id="s-orders"></article>
+        <article class="card s12" id="s-info"></article>
+      </div>
+    </section>
+
+    <!-- POSITIONS -->
+    <section class="view" id="v-pos" data-title="Positions" hidden>
+      <div class="grid">
+        <article class="card s12" id="p-sum"></article>
+        <article class="card s12" id="p-list"></article>
+        <article class="card s6" id="p-fam"></article>
+        <article class="card s6" id="p-next"></article>
+      </div>
+    </section>
+
+    <!-- BILAN -->
+    <section class="view" id="v-bilan" data-title="Bilan" hidden>
+      <div class="years" id="b-years" role="tablist" aria-label="Année de départ"></div>
+      <div class="grid">
+        <article class="card hero s12" id="b-hero"></article>
+        <article class="card s7" id="b-curve"></article>
+        <article class="card s5" id="b-journey"></article>
+        <article class="card s12" id="b-annees"></article>
+        <article class="card s6" id="b-risk"></article>
+        <article class="card s6" id="b-starts"></article>
+        <article class="card s7" id="b-mkts"></article>
+        <article class="card s5" id="b-month"></article>
+        <details class="card s12 more" id="b-more">
+          <summary>Comment ces chiffres sont calculés</summary>
+          <div id="b-method"></div>
+        </details>
+      </div>
+    </section>
+
+    <!-- COMPTE -->
+    <section class="view" id="v-compte" data-title="Compte" hidden>
+      <div class="grid">
+        <article class="card s6">
+          <h2>Mon compte FundedNext</h2>
+          <div class="form">
+            <label>Compte<select id="c-size">
+              <option value="2000">Stellar Instant 2 000 $</option><option value="5000">Stellar Instant 5 000 $</option>
+              <option value="10000">Stellar Instant 10 000 $</option><option value="20000">Stellar Instant 20 000 $</option>
+            </select></label>
+            <label class="sw"><input type="checkbox" id="c-swap"><span><b>Option Swap-Free</b><small>Pas de frais de nuit ; le compte coûte 10 % de plus. Recommandée : les positions sont gardées des semaines.</small></span></label>
+            <label>Volatilité visée<select id="c-vol">
+              <option value="0.06">6 % par an (normal)</option><option value="0.04">4 % par an (prudent)</option>
+            </select></label>
+            <label>Pas des lots sur MT5<select id="c-step"><option value="0.01">0,01 lot</option><option value="0.1">0,1 lot</option></select></label>
+          </div>
+          <p class="muted" id="c-price"></p>
+        </article>
+        <article class="card s6">
+          <h2>Taille des contrats</h2>
+          <p class="muted">Valeur d'un lot dans MT5 (clic droit sur le symbole, puis Spécification). Valeurs FundedNext par défaut.</p>
+          <div class="ct" id="c-ct"></div>
+        </article>
+        <article class="card s6">
+          <h2>La méthode</h2>
+          <div class="method" id="c-method"></div>
+        </article>
+        <article class="card s6">
+          <h2>Les mots de l'appli</h2>
+          <dl class="gloss" id="c-gloss"></dl>
+        </article>
+        <article class="card s12">
+          <h2>Installer et utiliser</h2>
+          <ol class="steps">
+            <li>Sur iPhone, dans Safari : bouton Partager, puis <b>Sur l'écran d'accueil</b>. Triade s'ouvre alors comme une application.</li>
+            <li>Mettez une alarme chaque soir de semaine à <b>21 h 40</b> (heure de Paris ; 20 h 40 quelques semaines au printemps et à l'automne, l'appli l'indique).</li>
+            <li>Ouvrez <b>Ce soir</b>, passez les ordres affichés sur MT5 avec leur stop, cochez-les. Le soir de révision (une séance sur cinq, l'appli le signale), tous les stops sont replacés.</li>
+          </ol>
+          <p class="muted" id="c-version"></p>
+          <p class="muted">Simulation sur données passées : rien ne garantit les résultats futurs. Je ne suis pas conseiller financier ; cette appli applique une méthode, elle ne remplace pas votre jugement.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="engine.js?v=202611121236"></script>
+<script src="app.js?v=202611121236"></script>
+</body>
+</html>
