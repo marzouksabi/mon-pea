@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 12/11 12:36';
+  var VERSION = 'version du 12/11 13:02';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -120,7 +120,7 @@
   };
 
   /* ---------- état ---------- */
-  var S = { D: null, off: null, prov: null, quotes: null, qTime: 0, qErr: false, updated: '', view: store.get('view', 'soir'), byear: store.get('byear', 2020), loadedAt: 0 };
+  var S = { D: null, off: null, prov: null, quotes: null, qTime: 0, qErr: false, updated: '', view: store.get('view', 'soir'), byear: store.get('byear', 2020), bmode: store.get('bmode', 'avec'), tyear: store.get('tyear', 0), tfam: 'all', tmax: 40, loadedAt: 0 };
   var done = store.get('done', {});
 
   /* ---------- données ---------- */
@@ -262,7 +262,7 @@
   }
 
   /* ---------- vues ---------- */
-  var TITLES = { soir: 'Ce soir', pos: 'Positions', bilan: 'Bilan', compte: 'Compte' };
+  var TITLES = { soir: 'Ce soir', pos: 'Positions', trades: 'Trades', bilan: 'Bilan', compte: 'Compte' };
   function show(v) {
     if (!TITLES[v]) v = 'soir';
     S.view = v; store.set('view', v);
@@ -286,6 +286,7 @@
     if (S.view === 'soir') renderSoir();
     else if (S.view === 'pos') renderPos();
     else if (S.view === 'bilan') renderBilan();
+    else if (S.view === 'trades') renderTrades();
     else renderCompte();
   }
   function stamp() {
@@ -478,23 +479,38 @@
     $('b-years').innerHTML = yrs.map(function (y) { return '<button data-byear="' + y + '" aria-pressed="' + (y === Y) + '">' + y + '</button>'; }).join('');
     var chip = $('b-years').querySelector('[aria-pressed="true"]');
     if (chip) $('b-years').scrollLeft = chip.offsetLeft - $('b-years').clientWidth / 2 + chip.clientWidth / 2;
-    var s0 = days.findIndex(function (d) { return yearOf(d) >= Y; }), sim = E.instant(R, RL, Math.max(0, s0 - 1), n - 1, cfg.size, fee());
+    var sans = S.bmode === 'sans';
+    $('b-mode').innerHTML = '<button data-bmode="avec" aria-pressed="' + !sans + '">Avec retraits</button><button data-bmode="sans" aria-pressed="' + sans + '">Sans retraits</button>';
+    var s0 = days.findIndex(function (d) { return yearOf(d) >= Y; }), sim = E.instant(R, RL, Math.max(0, s0 - 1), n - 1, cfg.size, fee(), sans);
     var span = (n - s0) / 252, x = Array.prototype.slice.call(R, s0), sum = 0, mean, sd = 0, eq = [], dd = [], pk = 0, mdd = 0;
     x.forEach(function (v) { sum += v; eq.push(sum); pk = Math.max(pk, sum); dd.push(sum - pk); mdd = Math.min(mdd, sum - pk); });
     mean = sum / x.length; x.forEach(function (v) { sd += (v - mean) * (v - mean); }); sd = Math.sqrt(sd / (x.length - 1));
     var pays = sim.events.filter(function (e) { return e.type === 'paiement'; }), buys = sim.events.filter(function (e) { return e.type === 'achat'; });
     var acc = sim.account;
+    var kpis = '<div class="kpis"><div><span>Moteur, par an</span><b>' + pct(mean * 252) + '</b></div><div><span>Pire recul</span><b>' + pct(mdd) + '</b></div>' +
+      '<div><span>Rapport gain / risque</span><b>' + nf(mean / sd * Math.sqrt(252), 2) + '</b></div><div><span>Sur la période</span><b>' + nf(span, 1) + ' ans</b></div></div>';
+    if (sans) {
+      var gain = acc.bal - cfg.size, take = Math.max(0, acc.bal - cfg.size) * 0.7;
+      $('b-hero').innerHTML = '<div class="card-head"><h3>Stellar Instant ' + nf(cfg.size) + ' $ démarré en janvier ' + Y + ', sans aucun retrait</h3><span class="tri" aria-hidden="true"><i></i><i></i><i></i></span></div>' +
+        '<div class="count">' + usd(acc.bal) + '</div><p class="sub">solde du compte au ' + fullDay(days[n - 1]) + ', soit ' + sUsd(gain) + ' depuis son achat</p>' +
+        '<p>' + buys.length + ' compte' + (buys.length > 1 ? 's' : '') + ' acheté' + (buys.length > 1 ? 's' : '') + ' (' + usd(sim.fees) + '), dont ' + sim.burnt + ' cramé' + (sim.burnt > 1 ? 's' : '') + '. Seuil de perte ' + usd(acc.mll) + ' : marge de ' + usd(acc.bal - acc.mll) + ' avant de cramer. ' +
+        'Tout retirer aujourd’hui vous rapporterait ' + usd(take) + ' (70 %), soit ' + sUsd(take - sim.fees) + ' net des achats.</p>' + kpis;
+    } else
     $('b-hero').innerHTML = '<div class="card-head"><h3>Stellar Instant ' + nf(cfg.size) + ' $ démarré en janvier ' + Y + '</h3><span class="tri" aria-hidden="true"><i></i><i></i><i></i></span></div>' +
       '<div class="count">' + sUsd(sim.net) + '</div><p class="sub">net après achats, au ' + fullDay(days[n - 1]) + '</p>' +
       '<p>' + pays.length + ' retrait' + (pays.length > 1 ? 's' : '') + ' pour ' + usd(sim.paid) + ' reçus, ' + buys.length + ' compte' + (buys.length > 1 ? 's' : '') + ' acheté' + (buys.length > 1 ? 's' : '') + ' (' + usd(sim.fees) + '), dont ' + sim.burnt + ' cramé' + (sim.burnt > 1 ? 's' : '') + '. ' +
-      'Compte en cours : solde ' + usd(acc.bal) + ', seuil de perte ' + usd(acc.mll) + '.</p>' +
-      '<div class="kpis"><div><span>Moteur, par an</span><b>' + pct(mean * 252) + '</b></div><div><span>Pire recul</span><b>' + pct(mdd) + '</b></div>' +
-      '<div><span>Rapport gain / risque</span><b>' + nf(mean / sd * Math.sqrt(252), 2) + '</b></div><div><span>Sur la période</span><b>' + nf(span, 1) + ' ans</b></div></div>';
+      'Compte en cours : solde ' + usd(acc.bal) + ' après les retraits, seuil de perte ' + usd(acc.mll) + '.</p>' + kpis;
 
     // courbe du moteur
-    $('b-curve').innerHTML = '<div class="card-head"><h2>Le moteur depuis janvier ' + Y + '</h2><span class="small">gain cumulé, en % du compte</span></div><div class="chart" id="b-chart"></div>' +
-      '<div class="legend"><span><i style="background:var(--accent)"></i>gain cumulé</span><span><i style="background:var(--crit);opacity:.5;height:8px"></i>recul depuis le plus haut</span></div>';
-    curveChart($('b-chart'), days.slice(s0), eq, dd);
+    if (sans) {
+      $('b-curve').innerHTML = '<div class="card-head"><h2>Solde du compte depuis janvier ' + Y + '</h2><span class="small">en dollars, sans retrait</span></div><div class="chart" id="b-chart"></div>' +
+        '<div class="legend"><span><i style="background:var(--accent)"></i>solde</span><span><i style="background:var(--crit)"></i>seuil de perte</span><span><i style="background:var(--ink-3)"></i>solde de départ</span></div>';
+      balanceChart($('b-chart'), days.slice(s0), sim.bal, sim.mll);
+    } else {
+      $('b-curve').innerHTML = '<div class="card-head"><h2>Le moteur depuis janvier ' + Y + '</h2><span class="small">gain cumulé, en % du compte</span></div><div class="chart" id="b-chart"></div>' +
+        '<div class="legend"><span><i style="background:var(--accent)"></i>gain cumulé</span><span><i style="background:var(--crit);opacity:.5;height:8px"></i>recul depuis le plus haut</span></div>';
+      curveChart($('b-chart'), days.slice(s0), eq, dd);
+    }
 
     // parcours du compte
     var ev = sim.events.slice().reverse();
@@ -510,14 +526,17 @@
     // années
     var mxY = 0.01; yrs.forEach(function (y) { mxY = Math.max(mxY, Math.abs(B.years[y] || 0)); });
     var perY = {}; sim.events.forEach(function (e) { var yy = yearOf(days[Math.min(n - 1, e.t + 1)]); perY[yy] = (perY[yy] || 0) + e.v; });
+    var endY = {}; sim.bal.forEach(function (b, k) { endY[yearOf(days[s0 + k])] = b; });
     var col = function (y, top) { var v = B.years[y] || 0, h = Math.abs(v) / mxY * (top ? 82 : 40), dim = y < Y ? ' dim' : '';
       if (top) return '<div class="c' + dim + '" data-byear="' + y + '">' + (v >= 0 ? '<span class="yb-v">' + nf(v * 100, 1) + '</span><i class="b" style="height:' + h.toFixed(1) + 'px"></i>' : '') + '</div>';
       return '<div class="c' + dim + '" data-byear="' + y + '">' + (v < 0 ? '<i class="b" style="height:' + h.toFixed(1) + 'px"></i><span class="yb-v">' + nf(v * 100, 1) + '</span>' : '') + '</div>'; };
     $('b-annees').innerHTML = '<div class="card-head"><h2>Année par année</h2><span class="small">moteur en % du compte · touchez une année pour y démarrer</span></div>' +
       '<div class="yb-wrap"><div class="yb-top">' + yrs.map(function (y) { return col(y, true); }).join('') + '</div><div class="yb-bot">' + yrs.map(function (y) { return col(y, false); }).join('') + '</div>' +
       '<div class="yb-y">' + yrs.map(function (y) { return '<span>' + String(y).slice(2) + '</span>'; }).join('') + '</div></div>' +
-      '<div class="scroll"><table class="ptable" style="margin-top:12px"><thead><tr><th>Année</th><th>Moteur</th><th>Compte : retraits − achats</th></tr></thead><tbody>' +
-      yrs.filter(function (y) { return y >= Y; }).reverse().map(function (y) { var v = perY[y] || 0; return '<tr><td>' + y + (y === Yn ? ' (en cours)' : '') + '</td><td class="' + ((B.years[y] || 0) >= 0 ? 'pos' : 'neg') + '">' + pct(B.years[y] || 0) + '</td><td class="' + (v >= 0 ? 'pos' : 'neg') + '">' + sUsd(v) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+      '<div class="scroll"><table class="ptable" style="margin-top:12px"><thead><tr><th>Année</th><th>Moteur</th><th>' + (sans ? 'Solde en fin d’année' : 'Compte : retraits − achats') + '</th></tr></thead><tbody>' +
+      yrs.filter(function (y) { return y >= Y; }).reverse().map(function (y) {
+        var v = perY[y] || 0, last = sans ? '<td>' + usd(endY[y] || cfg.size) + '</td>' : '<td class="' + (v >= 0 ? 'pos' : 'neg') + '">' + sUsd(v) + '</td>';
+        return '<tr><td>' + y + (y === Yn ? ' (en cours)' : '') + '</td><td class="' + ((B.years[y] || 0) >= 0 ? 'pos' : 'neg') + '">' + pct(B.years[y] || 0) + '</td>' + last + '</tr>'; }).join('') + '</tbody></table></div>';
 
     // risque
     var worst = 0, wd = 0, mpos = 0, mtot = 0, stops = 0, rmax = 0;
@@ -594,10 +613,130 @@
     svg.addEventListener('mousemove', move); svg.addEventListener('touchmove', move, { passive: true });
     svg.addEventListener('mouseleave', function () { tip.hidden = true; cross.style.display = 'none'; });
   }
+  function balanceChart(el, xd, bal, mll) {
+    var W = Math.max(280, el.clientWidth || 600), H = 220, padL = 52, padR = 8, padT = 10, padB = 22, n = bal.length;
+    var mx = Math.max(cfg.size * 1.02, Math.max.apply(null, bal)), mn = Math.min(cfg.size * 0.93, Math.min.apply(null, mll));
+    var X = function (i) { return padL + i / Math.max(1, n - 1) * (W - padL - padR); }, Yv = function (v) { return padT + (mx - v) / (mx - mn) * (H - padT - padB); };
+    var step = Math.max(1, Math.floor(n / 600)), lb = '', lm = '';
+    for (var i = 0; i < n; i += step) { lb += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Yv(bal[i]).toFixed(1); lm += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Yv(mll[i]).toFixed(1); }
+    var range = mx - mn, st = [500, 1000, 2000, 5000, 10000, 20000, 50000].filter(function (v) { return range / v <= 6; })[0] || 100000, ticks = '';
+    for (var v = Math.ceil(mn / st) * st; v <= mx; v += st) ticks += '<line class="gl" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(v).toFixed(1) + '" y2="' + Yv(v).toFixed(1) + '"/><text class="ax" x="' + (padL - 6) + '" y="' + (Yv(v) + 4).toFixed(1) + '" text-anchor="end">' + nf(v / 1000, v % 1000 ? 1 : 0) + ' k</text>';
+    var yl = '', lastY = null;
+    for (i = 0; i < n; i++) { var yy = yearOf(xd[i]); if (yy !== lastY) { if (lastY !== null && (n < 1500 || yy % 2 === 0)) yl += '<text class="ax" x="' + X(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + yy + '</text>'; lastY = yy; } }
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Solde du compte">' + ticks + yl +
+      '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(cfg.size).toFixed(1) + '" y2="' + Yv(cfg.size).toFixed(1) + '" stroke="var(--ink-3)" stroke-dasharray="4 4"/>' +
+      '<path class="ln" d="' + lm + '" stroke="var(--crit)" stroke-width="1.5"/><path class="ln" d="' + lb + '" stroke="var(--accent)"/><line class="cross" y1="' + padT + '" y2="' + (H - padB) + '" style="display:none"/></svg><div class="tip" hidden></div>';
+    var svg = el.querySelector('svg'), tip = el.querySelector('.tip'), cross = el.querySelector('.cross');
+    var move = function (ev) {
+      var r = svg.getBoundingClientRect(), px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left, k = Math.round((px * W / r.width - padL) / (W - padL - padR) * (n - 1));
+      if (k < 0 || k >= n) { tip.hidden = true; cross.style.display = 'none'; return; }
+      cross.setAttribute('x1', X(k)); cross.setAttribute('x2', X(k)); cross.style.display = '';
+      tip.hidden = false; tip.style.left = (X(k) * r.width / W) + 'px'; tip.style.top = (Yv(bal[k]) * r.height / H - 8) + 'px';
+      tip.innerHTML = fullDay(xd[k]) + '<br>Solde <b>' + usd(bal[k]) + '</b> · seuil <b>' + usd(mll[k]) + '</b>';
+    };
+    svg.addEventListener('mousemove', move); svg.addEventListener('touchmove', move, { passive: true });
+    svg.addEventListener('mouseleave', function () { tip.hidden = true; cross.style.display = 'none'; });
+  }
+  document.addEventListener('click', function (e) {
+    var m = e.target.closest('[data-bmode]');
+    if (m) { S.bmode = m.dataset.bmode; store.set('bmode', S.bmode); renderBilan(); }
+  });
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-byear]');
     if (!b) return;
     S.byear = +b.dataset.byear; store.set('byear', S.byear); renderBilan();
+  });
+
+  /* ---- Trades : chaque position du moteur, de son ouverture à sa fermeture ---- */
+  function buildTrades(run) {
+    if (run._trades) return run._trades;
+    var out = [], T = run.T, hits = {};
+    run.events.forEach(function (e) { if (e.type === 'stop') (hits[e.j] = hits[e.j] || {})[e.t] = e; });
+    var open = function (j, t, h) {
+      var c = [run.W[0][t] * run.HR[j][t], run.W[1][t] * run.HT[j][t], run.W[2][t] * run.HV[j][t]];
+      return { j: j, code: CODES[j], side: sgn(h), t0: t, px0: run.C[j][t], h0: Math.abs(h), max: Math.abs(h), adj: 0, pnl: 0, cost: COST * Math.abs(h), eng: c,
+        ref: run.REF[j][t], dist: run.DIST[j][t] };
+    };
+    var close = function (tr, t, px, why) { tr.t1 = t; tr.px1 = px; tr.why = why; out.push(tr); };
+    for (var j = 0; j < NI; j++) {
+      var cur = null;
+      for (var t = 1; t < T; t++) {
+        var h0 = run.HELD[j][t - 1], h1 = run.HELD[j][t], st = hits[j] && hits[j][t];
+        if (cur) cur.pnl += run.PNL[j][t];
+        if (cur && st) { close(cur, t, st.px, 'stop'); cur = null; h0 = 0; }
+        if (cur && (!h1 || sgn(h1) !== sgn(h0))) { cur.cost += COST * Math.abs(h0); close(cur, t, run.C[j][t], h1 ? 'flip' : 'fin'); cur = null; h0 = 0; }
+        if (!cur && h1) cur = open(j, t, h1);
+        else if (cur && h1 !== h0) { cur.adj++; cur.max = Math.max(cur.max, Math.abs(h1)); cur.cost += COST * Math.abs(h1 - h0); }
+      }
+      if (cur) { cur.t1 = T - 1; cur.px1 = run.C[j][T - 1]; cur.why = 'live'; out.push(cur); }
+    }
+    out.forEach(function (tr) { tr.net = tr.pnl - tr.cost; });
+    out.sort(function (a, b) { return b.t0 - a.t0 || ORDER.indexOf(a.code) - ORDER.indexOf(b.code); });
+    run._trades = out;
+    return out;
+  }
+  var WHY = { stop: 'Stop touché', fin: 'Fermée par le moteur', flip: 'Retournée', live: 'En cours' };
+  function renderTrades() {
+    var run = S.off, days = S.D.days, n = days.length, all = buildTrades(run), Yn = yearOf(days[n - 1]);
+    var Y = S.tyear || Yn, yrs = ['Tout'];
+    for (var y = 2012; y <= Yn; y++) yrs.push(y);
+    $('t-years').innerHTML = yrs.map(function (y) { var v = y === 'Tout' ? -1 : y; return '<button data-tyear="' + v + '" aria-pressed="' + (v === Y) + '">' + y + '</button>'; }).join('');
+    var chip = $('t-years').querySelector('[aria-pressed="true"]');
+    if (chip) $('t-years').scrollLeft = chip.offsetLeft - $('t-years').clientWidth / 2 + chip.clientWidth / 2;
+    var F = S.tfam;
+    $('t-fam').innerHTML = [['all', 'Tous'], ['idx', 'Indices'], ['fx', 'Devises'], ['met', 'Métaux']].map(function (f) { return '<button data-tfam="' + f[0] + '" aria-pressed="' + (f[0] === F) + '">' + f[1] + '</button>'; }).join('');
+    var L = all.filter(function (tr) { var yy = yearOf(days[tr.t0]); return (Y === -1 || yy === Y) && yy >= 2012 && (F === 'all' || MK[tr.code].f === F); });
+    var closed = L.filter(function (tr) { return tr.why !== 'live'; }), win = closed.filter(function (tr) { return tr.net > 0; }), lose = closed.filter(function (tr) { return tr.net <= 0; });
+    var sum = function (a) { return a.reduce(function (x, tr) { return x + tr.net; }, 0); }, size = cfg.size;
+    var best = L.slice().sort(function (a, b) { return b.net - a.net; })[0], worst = L.slice().sort(function (a, b) { return a.net - b.net; })[0];
+    var dur = closed.length ? closed.reduce(function (x, tr) { return x + tr.t1 - tr.t0; }, 0) / closed.length : 0;
+    var stops = closed.filter(function (tr) { return tr.why === 'stop'; }).length;
+    var when = function (tr) { return tr.code + ' · ' + shortDay(days[tr.t0]) + ' ' + yearOf(days[tr.t0]); };
+    var label = Y === -1 ? 'depuis 2012' : 'ouverts en ' + Y;
+    $('t-sum').innerHTML = '<div class="card-head"><h2>' + L.length + ' trade' + (L.length > 1 ? 's' : '') + ' ' + label + '</h2><span class="small">montants pour un compte de ' + nf(size) + ' $, frais compris</span></div>' +
+      '<div class="stat4 q6">' +
+      '<div><span>Résultat total</span><b class="' + (sum(L) >= 0 ? 'pos' : 'neg') + '">' + sUsd(sum(L) * size) + '</b><small>' + pct(sum(L)) + ' du compte</small></div>' +
+      '<div><span>Trades gagnants</span><b>' + (closed.length ? Math.round(win.length / closed.length * 100) : 0) + ' %</b><small>' + win.length + ' sur ' + closed.length + ' fermés</small></div>' +
+      '<div><span>Gain moyen / perte moyenne</span><b>' + (win.length ? sUsd(sum(win) / win.length * size) : '—') + ' / ' + (lose.length ? sUsd(sum(lose) / lose.length * size) : '—') + '</b><small>par trade fermé</small></div>' +
+      '<div><span>Meilleur</span><b class="pos">' + (best ? sUsd(best.net * size) : '—') + '</b><small>' + (best ? when(best) : '') + '</small></div>' +
+      '<div><span>Pire</span><b class="neg">' + (worst ? sUsd(worst.net * size) : '—') + '</b><small>' + (worst ? when(worst) : '') + '</small></div>' +
+      '<div><span>Durée moyenne</span><b>' + nf(dur, 0) + ' séances</b><small>' + (closed.length ? Math.round(stops / closed.length * 100) : 0) + ' % fermés par le stop</small></div></div>';
+    var lotsTxt = function (tr) {
+      var v = Math.abs(lotsAt(run, tr.t0)[tr.j]);
+      return v ? nf(v, cfg.step < 0.1 ? 2 : 1) + ' lot' + (v >= 2 ? 's' : '') : 'sous ' + nf(cfg.step / 2, 3) + ' lot : non pris';
+    };
+    var row = function (tr) {
+      var d0 = days[tr.t0], d1 = days[tr.t1], ns = tr.t1 - tr.t0, cls = tr.side > 0 ? 'buy' : 'sell', amt = tr.net * size;
+      var eng = tr.eng.map(Math.abs), es = eng[0] + eng[1] + eng[2] || 1;
+      var engTxt = ['Repli', 'Tendance', 'Indices'].map(function (nm, k) { return eng[k] / es >= 0.005 ? nm + ' ' + Math.round(eng[k] / es * 100) + ' %' : null; }).filter(Boolean).join(' · ');
+      var stp = tr.side > 0 ? tr.ref * (1 - tr.dist) : tr.ref * (1 + tr.dist), mv = tr.px1 / tr.px0 - 1;
+      return '<details class="tr ' + cls + '"><summary><span class="i">' + ico(cls) + '</span><span class="w"><b>' + tr.code + '</b> <span class="small">' + (tr.side > 0 ? 'Achat' : 'Vente') + '</span>' +
+        '<span class="tag2' + (tr.why === 'stop' ? ' stop' : tr.why === 'live' ? ' live' : '') + '">' + WHY[tr.why] + '</span>' +
+        '<small>' + shortDay(d0) + (yearOf(d0) !== yearOf(d1) || tr.why === 'live' ? ' ' + yearOf(d0) : '') + ' → ' + (tr.why === 'live' ? 'aujourd\'hui' : shortDay(d1) + ' ' + yearOf(d1)) + ' · ' + ns + ' séance' + (ns > 1 ? 's' : '') + '</small></span>' +
+        '<span class="r"><b class="' + (amt >= 0 ? 'pos' : 'neg') + '">' + sUsd(amt) + '</b><small>' + pct(tr.net, 2) + '</small></span></summary>' +
+        '<div class="td"><div><span>Entrée · ' + fullDay(d0) + '</span><b>' + pxf(tr.code, tr.px0) + '</b></div>' +
+        '<div><span>' + (tr.why === 'live' ? 'Dernier cours' : 'Sortie · ' + fullDay(d1)) + '</span><b>' + pxf(tr.code, tr.px1) + '</b></div>' +
+        '<div><span>Lots à l\'entrée (compte ' + nf(size / 1000) + 'k)</span><b>' + lotsTxt(tr) + '</b></div>' +
+        '<div><span>Stop de départ</span><b>' + pxf(tr.code, stp) + ' (' + upct(tr.dist, 2) + ')</b></div>' +
+        '<div><span>Taille</span><b>' + upct(tr.h0, 0) + ' du compte' + (tr.max > tr.h0 * 1.01 ? ', jusqu\'à ' + upct(tr.max, 0) : '') + '</b></div>' +
+        '<div><span>Ajustements de taille</span><b>' + tr.adj + '</b></div>' +
+        '<div><span>Variation du prix</span><b class="' + (mv * tr.side >= 0 ? 'pos' : 'neg') + '">' + pct(mv, 2) + '</b></div>' +
+        '<div><span>Frais estimés</span><b>' + usd(tr.cost * size, 2) + '</b></div>' +
+        '<div class="full"><span>D\'où vient la position (' + esc(MK[tr.code].n) + ')</span><b>' + engTxt + '</b><div class="eng">' +
+        ['var(--e1)', 'var(--e2)', 'var(--e3)'].map(function (c, k) { return '<i style="width:' + (eng[k] / es * 100).toFixed(1) + '%;background:' + c + '"></i>'; }).join('') + '</div></div></div></details>';
+    };
+    var shown = L.slice(0, S.tmax);
+    $('t-list').innerHTML = '<div class="card-head"><h2>Détail des trades</h2><span class="small">du plus récent au plus ancien · touchez un trade</span></div>' +
+      (L.length ? '<div class="trs">' + shown.map(row).join('') + '</div>' +
+        (L.length > S.tmax ? '<button class="more-btn" data-tmore>Afficher ' + Math.min(40, L.length - S.tmax) + ' trades de plus (' + (L.length - S.tmax) + ' restants)</button>' : '')
+        : '<div class="empty">' + ico('flat') + 'Aucun trade.</div>') +
+      '<p class="muted">Un trade va de l\'ouverture d\'une position à sa fermeture (stop, fin du signal ou retournement) ; les ajustements de taille entre les deux en font partie. Montants calculés sur la taille voulue par le moteur, avant arrondi des lots, aux cours officiels de clôture.</p>';
+  }
+  document.addEventListener('click', function (e) {
+    var y = e.target.closest('[data-tyear]'), f = e.target.closest('[data-tfam]'), m = e.target.closest('[data-tmore]');
+    if (y) { S.tyear = +y.dataset.tyear; store.set('tyear', S.tyear); S.tmax = 40; renderTrades(); }
+    else if (f) { S.tfam = f.dataset.tfam; S.tmax = 40; renderTrades(); }
+    else if (m) { S.tmax += 40; renderTrades(); }
   });
 
   /* ---- Compte ---- */
@@ -632,6 +771,7 @@
       cfg.size = +$('c-size').value; cfg.swap = $('c-swap').checked; cfg.vol = +$('c-vol').value; cfg.step = +$('c-step').value;
       store.set('cfg', cfg); S.bil = null; S.prov = null;
       if (vol !== cfg.vol) S.off = E.run(S.D, engineOpts());
+      if (S.off) S.off._lots = null;
       render(); toast('Réglage enregistré');
     });
   });

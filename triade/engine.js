@@ -304,8 +304,8 @@
      solde (bloquée au solde de départ), pas de limite du jour, retrait dès +5 % sur le cycle ou après 10 séances (14 jours) avec
      au moins +1 %, en gardant 4 % au-dessus du seuil ; part 70 % aux deux premiers retraits puis 80 % ; compte cramé = racheté.
      r, rl : rendements quotidiens du compte (clôture, plus bas) ; s0, e0 : bornes (le compte démarre la séance après s0). */
-  function instant(r, rl, s0, e0, size, fee) {
-    var paid = 0, fees = fee, burnt = 0, ev = [{ t: s0, type: 'achat', v: -fee }], bal = [];
+  function instant(r, rl, s0, e0, size, fee, noWithdraw) {          // noWithdraw : aucun retrait, les gains restent sur le compte
+    var paid = 0, fees = fee, burnt = 0, ev = [{ t: s0, type: 'achat', v: -fee }], bal = [], mll = [];
     function fresh(i) { return { bal: size, mll: 0.94 * size, b0: size, m0: 0.94 * size, hi: size, c0: i, n: 0 }; }
     var a = fresh(s0), worst = 0;
     for (var i = s0 + 1; i <= e0; i++) {
@@ -313,12 +313,12 @@
       worst = Math.min(worst, (lowBal - a.mll) / size);
       if (lowBal < a.mll) {
         burnt++; fees += fee; ev.push({ t: i, type: 'crame', v: 0, bal: a.bal }); ev.push({ t: i, type: 'achat', v: -fee });
-        a = fresh(i); bal.push(a.bal); continue;
+        a = fresh(i); bal.push(a.bal); mll.push(a.mll); continue;
       }
       a.bal += size * r[i];
       if (a.bal > a.hi) { a.hi = a.bal; a.mll = Math.min(size, Math.max(a.mll, a.m0 + (a.hi - a.b0))); }
       var gg = a.bal - a.b0;
-      if (gg >= 0.05 * size || (i - a.c0 >= 10 && gg >= 0.01 * size)) {
+      if (!noWithdraw && (gg >= 0.05 * size || (i - a.c0 >= 10 && gg >= 0.01 * size))) {
         var wd = a.bal - Math.max(a.b0, a.mll + 0.04 * size);
         if (wd > 0) {
           var x = (a.n < 2 ? 0.70 : 0.80) * wd;
@@ -326,9 +326,9 @@
           a.b0 = a.bal; a.m0 = a.mll; a.hi = a.bal; a.c0 = i;
         }
       }
-      bal.push(a.bal);
+      bal.push(a.bal); mll.push(a.mll);
     }
-    return { net: paid - fees, paid: paid, fees: fees, burnt: burnt, events: ev, account: a, bal: bal };
+    return { net: paid - fees, paid: paid, fees: fees, burnt: burnt, events: ev, account: a, bal: bal, mll: mll };
   }
 
   var api = { CODES: CODES, decode: decode, run: run, instant: instant, median: median, std: std };
