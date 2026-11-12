@@ -1,7 +1,7 @@
 {
-  "name": "Triade · FundedNext Instant",
+  "name": "Triade · FundedNext 1-Step",
   "short_name": "Triade",
-  "description": "Ordres du soir du moteur Triade (repli dosé, tendance sur 18 marchés, indices dosés) avec la règle FundedNext des 3 %, positions, bilan et compte Stellar Instant simulé.",
+  "description": "Ordres du soir du moteur Triade (repli dosé, tendance sur 18 marchés, indices dosés) avec la règle FundedNext des 3 %, positions, bilan et compte Stellar 1-Step simulé.",
   "lang": "fr",
   "start_url": "./",
   "scope": "./",

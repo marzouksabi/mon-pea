@@ -1,9 +1,9 @@
 /* Triade : ordres du soir du moteur à trois branches (repli dosé, tendance sur 18 marchés, indices dosés) avec la règle
-   FundedNext des 3 %, positions, bilan et compte Stellar Instant simulé. Tout est calculé sur l'appareil (engine.js). */
+   FundedNext des 3 %, positions, trades, bilan et compte Stellar 1-Step simulé. Tout est calculé sur l'appareil (engine.js). */
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 12/11 13:02';
+  var VERSION = 'version du 12/11 16:27';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -107,8 +107,9 @@
   var ORDER = ['SPX500', 'NDX100', 'US30', 'GER30', 'UK100', 'FRA40', 'AUS200', 'HK50', 'JP225', 'EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD', 'XAUUSD', 'XAGUSD'];
   var FAM = { idx: 'Indices', fx: 'Devises', met: 'Métaux' };
   var DEF_CT = {}; ORDER.forEach(function (c) { DEF_CT[c] = MK[c].f === 'idx' ? 10 : MK[c].f === 'fx' ? 100000 : c === 'XAUUSD' ? 100 : 5000; });
-  var PRICE = { 2000: 59.99, 5000: 149.99, 10000: 299.99, 20000: 599.99 };
-  var cfg = store.get('cfg', null) || { size: 20000, swap: true, vol: 0.06, step: 0.01, ct: {} };
+  var PRICE = { 6000: 65.99, 15000: 129.99, 25000: 219.99, 50000: 329.99, 100000: 569.99, 200000: 1099.99 };   // Stellar 1-Step, prix publics (nov. 2026)
+  var cfg = store.get('cfg', null) || { size: 50000, swap: true, vol: 0.06, step: 0.01, ct: {} };
+  if (!PRICE[cfg.size]) cfg.size = 50000;                           // ancien réglage Instant : passage au 1-Step 50 000 $
   ORDER.forEach(function (c) { if (!(cfg.ct[c] > 0)) cfg.ct[c] = DEF_CT[c]; });
   var fee = function () { return Math.round(PRICE[cfg.size] * (cfg.swap ? 1.1 : 1) * 100) / 100; };
   var BUDGET = 0.0285, CAP = 0.029, LIMIT = 0.03, TRIM = 0.0297, COST = 0.00015;
@@ -358,14 +359,19 @@
 
     // jauge de risque
     var rk = riskAt(run, t), lots = lotsAt(run, t), npos = lots.filter(function (v) { return v; }).length, gross = 0;
-    lots.forEach(function (v, j) { if (v) gross += Math.abs(v) * vpl(run, CODES[j], lastReset(run, j, t)); });
+    var dr = 0;                                                         // perte du jour si tous les stops sont touchés, depuis le cours de ce soir
+    lots.forEach(function (v, j) {
+      if (!v) return;
+      var val = Math.abs(v) * vpl(run, CODES[j], lastReset(run, j, t)), c = run.C[j][t], rf = run.REF[j][t], d = run.DIST[j][t], sl = v > 0 ? rf * (1 - d) : rf * (1 + d);
+      gross += val; dr += val / cfg.size * Math.max(0, (v > 0 ? c - sl : sl - c) / c);
+    });
     var frac = Math.min(1, rk / LIMIT), arc = function (f) { var a = Math.PI * (1 - f); return [100 + 80 * Math.cos(a), 100 - 80 * Math.sin(a)]; }, p1 = arc(frac);
     var col = rk > LIMIT ? 'var(--crit)' : rk > 0.0295 ? 'var(--warn)' : 'var(--accent)';
     $('s-risk').innerHTML = '<div class="card-head"><h2>Risque engagé</h2><span class="small">plafond FundedNext 3 %</span></div>' +
       '<div class="gauge"><svg viewBox="0 0 200 112" aria-hidden="true"><path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="var(--field)" stroke-width="14" stroke-linecap="round"/>' +
       (frac > 0.005 ? '<path d="M20 100 A80 80 0 0 1 ' + p1[0].toFixed(1) + ' ' + p1[1].toFixed(1) + '" fill="none" stroke="' + col + '" stroke-width="14" stroke-linecap="round"/>' : '') + '</svg>' +
       '<div class="v">' + upct(rk, 2) + '</div><div class="l">du compte si tous les stops sont touchés</div></div>' +
-      '<dl class="rows"><div><dt>Perte maximale</dt><dd>' + usd(rk * cfg.size) + '</dd></div><div><dt>Positions ouvertes</dt><dd>' + npos + ' sur 18</dd></div>' +
+      '<dl class="rows"><div><dt>Perte maximale</dt><dd>' + usd(rk * cfg.size) + '</dd></div><div><dt>Si tout touche son stop demain</dt><dd class="' + (dr > 0.03 ? 'neg' : '') + '">' + upct(dr, 2) + ' <span class="small">(limite du jour 3 %)</span></dd></div><div><dt>Positions ouvertes</dt><dd>' + npos + ' sur 18</dd></div>' +
       '<div><dt>Exposition</dt><dd>' + nf(gross / cfg.size, 2) + ' fois le compte</dd></div></dl>';
 
     // ordres
@@ -465,7 +471,7 @@
     for (var s = first; s < n; s += 5) {
       var e = days.findIndex(function (d) { return d >= days[s] + 1461; });
       if (e < 0) break;
-      starts.push(E.instant(R, RL, s, e, cfg.size, f).net);
+      starts.push(E.onestep(R, RL, s, e, cfg.size, f).net);
     }
     S.bil = { key: cfg.size + '|' + cfg.swap + '|' + cfg.vol, first: first, years: years, months: months, starts: starts };
     return S.bil;
@@ -481,7 +487,7 @@
     if (chip) $('b-years').scrollLeft = chip.offsetLeft - $('b-years').clientWidth / 2 + chip.clientWidth / 2;
     var sans = S.bmode === 'sans';
     $('b-mode').innerHTML = '<button data-bmode="avec" aria-pressed="' + !sans + '">Avec retraits</button><button data-bmode="sans" aria-pressed="' + sans + '">Sans retraits</button>';
-    var s0 = days.findIndex(function (d) { return yearOf(d) >= Y; }), sim = E.instant(R, RL, Math.max(0, s0 - 1), n - 1, cfg.size, fee(), sans);
+    var s0 = days.findIndex(function (d) { return yearOf(d) >= Y; }), sim = E.onestep(R, RL, Math.max(0, s0 - 1), n - 1, cfg.size, fee(), sans);
     var span = (n - s0) / 252, x = Array.prototype.slice.call(R, s0), sum = 0, mean, sd = 0, eq = [], dd = [], pk = 0, mdd = 0;
     x.forEach(function (v) { sum += v; eq.push(sum); pk = Math.max(pk, sum); dd.push(sum - pk); mdd = Math.min(mdd, sum - pk); });
     mean = sum / x.length; x.forEach(function (v) { sd += (v - mean) * (v - mean); }); sd = Math.sqrt(sd / (x.length - 1));
@@ -489,21 +495,22 @@
     var acc = sim.account;
     var kpis = '<div class="kpis"><div><span>Moteur, par an</span><b>' + pct(mean * 252) + '</b></div><div><span>Pire recul</span><b>' + pct(mdd) + '</b></div>' +
       '<div><span>Rapport gain / risque</span><b>' + nf(mean / sd * Math.sqrt(252), 2) + '</b></div><div><span>Sur la période</span><b>' + nf(span, 1) + ' ans</b></div></div>';
+    var size = cfg.size, floor = 0.94 * size, pl = function (k, w) { return k + ' ' + w + (k > 1 ? 's' : ''); };
+    var buyTxt = pl(buys.length, 'challenge') + ' acheté' + (buys.length > 1 ? 's' : '') + ' (' + usd(sim.fees) + '), ' + sim.passed + ' réussi' + (sim.passed > 1 ? 's' : '') + ', ' + sim.burnt + ' cramé' + (sim.burnt > 1 ? 's' : '');
+    var state = acc.ph === 1 ? 'challenge en cours, solde ' + usd(acc.eq) + ' (objectif ' + usd(1.1 * size) + ', seuil de perte ' + usd(floor) + ')'
+      : 'compte financé, solde ' + usd(acc.eq) + (sans ? '' : ' depuis le dernier retrait') + ', seuil de perte ' + usd(floor) + ' (marge ' + usd(acc.eq - floor) + ')';
+    var head = '<div class="card-head"><h3>Stellar 1-Step ' + nf(size) + ' $ démarré en janvier ' + Y + (sans ? ', sans aucun retrait' : '') + '</h3><span class="tri" aria-hidden="true"><i></i><i></i><i></i></span></div>';
     if (sans) {
-      var gain = acc.bal - cfg.size, take = Math.max(0, acc.bal - cfg.size) * 0.7;
-      $('b-hero').innerHTML = '<div class="card-head"><h3>Stellar Instant ' + nf(cfg.size) + ' $ démarré en janvier ' + Y + ', sans aucun retrait</h3><span class="tri" aria-hidden="true"><i></i><i></i><i></i></span></div>' +
-        '<div class="count">' + usd(acc.bal) + '</div><p class="sub">solde du compte au ' + fullDay(days[n - 1]) + ', soit ' + sUsd(gain) + ' depuis son achat</p>' +
-        '<p>' + buys.length + ' compte' + (buys.length > 1 ? 's' : '') + ' acheté' + (buys.length > 1 ? 's' : '') + ' (' + usd(sim.fees) + '), dont ' + sim.burnt + ' cramé' + (sim.burnt > 1 ? 's' : '') + '. Seuil de perte ' + usd(acc.mll) + ' : marge de ' + usd(acc.bal - acc.mll) + ' avant de cramer. ' +
-        'Tout retirer aujourd’hui vous rapporterait ' + usd(take) + ' (70 %), soit ' + sUsd(take - sim.fees) + ' net des achats.</p>' + kpis;
+      var take = acc.ph === 3 ? Math.max(0, acc.eq - size) * 0.8 : 0;
+      $('b-hero').innerHTML = head + '<div class="count">' + usd(acc.eq) + '</div><p class="sub">solde au ' + fullDay(days[n - 1]) + (acc.ph === 3 ? ', soit ' + sUsd(acc.eq - size) + ' de gains sur le compte financé' : ' (challenge en cours)') + '</p>' +
+        '<p>' + buyTxt + '. En cours : ' + state + '. ' + (acc.ph === 3 ? 'Tout retirer aujourd’hui vous rapporterait ' + usd(take) + ' (80 %), soit ' + sUsd(take - sim.fees) + ' net des achats.' : 'Rien à retirer tant que le challenge n’est pas réussi.') + '</p>' + kpis;
     } else
-    $('b-hero').innerHTML = '<div class="card-head"><h3>Stellar Instant ' + nf(cfg.size) + ' $ démarré en janvier ' + Y + '</h3><span class="tri" aria-hidden="true"><i></i><i></i><i></i></span></div>' +
-      '<div class="count">' + sUsd(sim.net) + '</div><p class="sub">net après achats, au ' + fullDay(days[n - 1]) + '</p>' +
-      '<p>' + pays.length + ' retrait' + (pays.length > 1 ? 's' : '') + ' pour ' + usd(sim.paid) + ' reçus, ' + buys.length + ' compte' + (buys.length > 1 ? 's' : '') + ' acheté' + (buys.length > 1 ? 's' : '') + ' (' + usd(sim.fees) + '), dont ' + sim.burnt + ' cramé' + (sim.burnt > 1 ? 's' : '') + '. ' +
-      'Compte en cours : solde ' + usd(acc.bal) + ' après les retraits, seuil de perte ' + usd(acc.mll) + '.</p>' + kpis;
+    $('b-hero').innerHTML = head + '<div class="count">' + sUsd(sim.net) + '</div><p class="sub">net après achats, au ' + fullDay(days[n - 1]) + '</p>' +
+      '<p>' + buyTxt + ' ; ' + pl(pays.length, 'retrait') + ' pour ' + usd(sim.paid) + ' reçus (prix du challenge remboursé au 3e). En cours : ' + state + '.</p>' + kpis;
 
     // courbe du moteur
     if (sans) {
-      $('b-curve').innerHTML = '<div class="card-head"><h2>Solde du compte depuis janvier ' + Y + '</h2><span class="small">en dollars, sans retrait</span></div><div class="chart" id="b-chart"></div>' +
+      $('b-curve').innerHTML = '<div class="card-head"><h2>Solde du compte depuis janvier ' + Y + '</h2><span class="small">en dollars, challenge puis compte financé</span></div><div class="chart" id="b-chart"></div>' +
         '<div class="legend"><span><i style="background:var(--accent)"></i>solde</span><span><i style="background:var(--crit)"></i>seuil de perte</span><span><i style="background:var(--ink-3)"></i>solde de départ</span></div>';
       balanceChart($('b-chart'), days.slice(s0), sim.bal, sim.mll);
     } else {
@@ -516,9 +523,10 @@
     var ev = sim.events.slice().reverse();
     var evHtml = function (e) {
       var d = days[Math.min(n - 1, e.t + (e.type === 'achat' && e.t === s0 - 1 ? 1 : 0))];
-      if (e.type === 'paiement') return '<div class="e pay"><span class="i">' + ico('cash') + '</span><span>Retrait n° ' + e.n + '<small>' + fullDay(d) + ' · ' + (e.n <= 2 ? '70' : '80') + ' % de ' + usd(e.gross) + '</small></span><span class="a pos">' + sUsd(e.v) + '</span></div>';
-      if (e.type === 'achat') return '<div class="e buy"><span class="i">' + ico('cart') + '</span><span>Achat du compte<small>' + fullDay(d) + '</small></span><span class="a">' + sUsd(e.v) + '</span></div>';
-      return '<div class="e burn"><span class="i">' + ico('flame') + '</span><span>Compte cramé<small>' + fullDay(d) + ' · seuil de perte touché</small></span><span class="a neg">0 $</span></div>';
+      if (e.type === 'paiement') return '<div class="e pay"><span class="i">' + ico('cash') + '</span><span>Retrait n° ' + e.n + '<small>' + fullDay(d) + ' · 80 % de ' + usd(e.gross) + (e.refund ? ' + challenge remboursé' : '') + '</small></span><span class="a pos">' + sUsd(e.v) + '</span></div>';
+      if (e.type === 'achat') return '<div class="e buy"><span class="i">' + ico('cart') + '</span><span>Achat du challenge<small>' + fullDay(d) + '</small></span><span class="a">' + sUsd(e.v) + '</span></div>';
+      if (e.type === 'reussite') return '<div class="e ok"><span class="i">' + ico('check') + '</span><span>Challenge réussi<small>' + fullDay(d) + ' · objectif +10 % en ' + e.days + ' séances : compte financé</small></span><span class="a">' + usd(cfg.size) + '</span></div>';
+      return '<div class="e burn"><span class="i">' + ico('flame') + '</span><span>' + (e.ph === 1 ? 'Challenge raté' : 'Compte financé cramé') + '<small>' + fullDay(d) + ' · ' + (e.why === 'jour' ? 'perte du jour au-delà de 3 %' : 'solde sous ' + usd(0.94 * cfg.size)) + '</small></span><span class="a neg">0 $</span></div>';
     };
     $('b-journey').innerHTML = '<div class="card-head"><h2>Parcours du compte</h2><span class="small">du plus récent au plus ancien</span></div><div class="jr">' + ev.slice(0, 7).map(evHtml).join('') + '</div>' +
       (ev.length > 7 ? '<details class="jr-more"><summary>Voir tout le parcours (' + ev.length + ' étapes)</summary><div class="jr">' + ev.slice(7).map(evHtml).join('') + '</div></details>' : '');
@@ -583,7 +591,8 @@
       '<li>Le moteur est rejoué séance par séance depuis 2008 avec les cours quotidiens de Yahoo (indices au comptant, devises, or et argent en contrats à terme), exactement comme l\'appli calcule les ordres du soir.</li>' +
       '<li>Règle des 3 % respectée chaque soir : stops placés pour que la perte possible de toutes les positions, mesurée depuis le prix d\'entrée, reste sous 2,9 % du compte. Taille gardée entre deux recalages du stop.</li>' +
       '<li>Frais : 0,015 % de chaque montant échangé, plus 0,02 % sur chaque stop touché. Pas de frais de nuit (option Swap-Free). Arrondi des lots non compté.</li>' +
-      '<li>Compte Stellar Instant : perte maximale 6 % suiveuse sur le plus haut solde (bloquée au solde de départ), retrait dès +5 % ou après 14 jours avec au moins +1 %, en gardant 4 % de marge au-dessus du seuil ; 70 % aux deux premiers retraits puis 80 % ; compte cramé racheté au prix de ' + usd(fee(), 2) + '.</li>' +
+      '<li>Compte Stellar 1-Step : challenge à +10 % en 2 jours de trading au moins, puis compte financé qui repart du solde de départ. Perte du jour limitée à 3 % et perte maximale à 6 % sous le solde de départ (fixe), vérifiées au plus bas de chaque journée. Retrait tous les 5 jours de bourse, 80 % des gains, prix du challenge remboursé au 3e retrait. Compte cramé : nouveau challenge acheté ' + usd(fee(), 2) + '.</li>' +
+      '<li>Les mêmes ordres sont suivis pendant le challenge et sur le compte financé (la règle des 3 % ne s’impose qu’au compte financé, l’appli l’applique partout).</li>' +
       '<li>Le laboratoire (2009-2026) avait oublié les frais de rééquilibrage et laissait le risque dépasser 3 % un soir sur trois : l\'appli corrige les deux, ses chiffres sont donc plus bas et plus réalistes.</li>' +
       '<li>Résultats passés simulés : ils ne garantissent rien pour l\'avenir. Je ne suis pas conseiller financier.</li></ul>';
   }
@@ -742,8 +751,8 @@
   /* ---- Compte ---- */
   function renderCompte() {
     $('c-size').value = String(cfg.size); $('c-swap').checked = !!cfg.swap; $('c-vol').value = String(cfg.vol); $('c-step').value = String(cfg.step);
-    $('c-price').innerHTML = 'Prix du compte : <b>' + usd(fee(), 2) + '</b>' + (cfg.swap ? ' (dont 10 % pour l\'option Swap-Free)' : '') + ', non remboursé. Maximum 20 000 $ de comptes Instant par personne.' +
-      (cfg.size < 20000 ? '<br>Sur un petit compte, beaucoup de positions voulues tombent sous 0,01 lot et sont laissées de côté : le résultat réel s\'écarte du bilan. 20 000 $ conseillé.' : '');
+    $('c-price').innerHTML = 'Prix du compte : <b>' + usd(fee(), 2) + '</b>' + (cfg.swap ? ' (dont 10 % pour l\'option Swap-Free)' : '') + ', remboursé au 3e retrait. Prix publics de novembre 2026 : vérifiez sur le site de FundedNext avant d\'acheter.' +
+      (cfg.size < 25000 ? '<br>Sur un petit compte, beaucoup de positions voulues tombent sous 0,01 lot et sont laissées de côté : le résultat réel s\'écarte du bilan. 50 000 $ conseillé.' : '');
     if (!$('c-ct').dataset.built) {
       $('c-ct').innerHTML = ORDER.map(function (c) { return '<label>' + c + '<input type="number" inputmode="decimal" min="0" step="any" data-ct="' + c + '"></label>'; }).join('');
       $('c-ct').dataset.built = 1;
@@ -760,7 +769,8 @@
       ['Stop', 'Ordre de sortie automatique placé avec la position. Il fixe la perte maximale du trade.'],
       ['Soir de révision', 'Une séance sur cinq : le suivi de tendance revoit ses marchés et tous les stops sont replacés depuis le cours du soir.'],
       ['Risque engagé', 'Ce que coûteraient tous les stops touchés en même temps, depuis le prix d\'entrée. FundedNext l\'interdit au-delà de 3 % du compte.'],
-      ['Seuil de perte', 'Sur l\'Instant, le compte est perdu si le solde passe sous ce seuil : 6 % sous le plus haut solde atteint, jamais au-dessus du solde de départ.'],
+      ['Challenge', 'Première étape du 1-Step : gagner 10 % en au moins 2 jours de trading, sans toucher les limites de perte. Réussi, il donne un compte financé qui repart du solde de départ.'],
+      ['Seuil de perte', 'Sur le 1-Step, le compte est perdu si le solde passe sous 94 % du solde de départ (seuil fixe) ou si une journée coûte plus de 3 %.'],
       ['Cramé', 'Compte perdu après avoir touché le seuil de perte. Le bilan suppose qu\'on en rachète un aussitôt.']
     ].map(function (g) { return '<dt>' + g[0] + '</dt><dd>' + g[1] + '</dd>'; }).join('');
     $('c-version').textContent = 'Triade · ' + VERSION + ' · cours officiels mis à jour le ' + (S.updated ? new Date(S.updated).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');

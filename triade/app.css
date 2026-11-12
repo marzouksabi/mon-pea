@@ -1,4 +1,4 @@
-/* Triade : ordres du soir du moteur à trois branches pour un compte FundedNext Stellar Instant. Ordinateur et iPhone. */
+/* Triade : ordres du soir du moteur à trois branches pour un compte FundedNext Stellar 1-Step. Ordinateur et iPhone. */
 :root{
   --bg-1:#eef0fa; --bg-2:#f7f7fc; --glow:rgba(139,140,255,.30);
   --card:rgba(255,255,255,.78); --card-solid:#ffffff; --line:rgba(28,26,82,.09); --field:rgba(28,26,82,.05);
@@ -327,3 +327,4 @@ b{font-weight:650}
 @media (min-width:700px){.td{grid-template-columns:repeat(4,1fr)}.td .full{grid-column:span 4}}
 .more-btn{display:block;width:100%;margin-top:10px;border:1px solid var(--line);background:var(--field);border-radius:12px;padding:10px;font-weight:650;color:var(--accent);cursor:pointer}
 @media (min-width:640px){.stat4.q6{grid-template-columns:repeat(3,1fr)}}
+.jr .ok .i{background:var(--accent-soft);color:var(--accent)}
