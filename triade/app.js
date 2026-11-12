@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 12/11 19:49';
+  var VERSION = 'version du 12/11 20:55';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -556,6 +556,9 @@
         var v = perY[y] || 0, last = sans ? '<td>' + usd(endY[y] || cfg.size) + '</td>' : '<td class="' + (v >= 0 ? 'pos' : 'neg') + '">' + sUsd(v) + '</td>';
         return '<tr><td>' + y + (y === Yn ? ' (en cours)' : '') + '</td><td class="' + ((B.years[y] || 0) >= 0 ? 'pos' : 'neg') + '">' + pct(B.years[y] || 0) + '</td>' + last + '</tr>'; }).join('') + '</tbody></table></div>';
 
+    // les challenges année par année : un challenge acheté début janvier, et tous les départs possibles de l'année
+    renderChallenges(run, CHR, B);
+
     // risque
     var worst = 0, wd = 0, mpos = 0, mtot = 0, stops = 0, rmax = 0;
     for (var t = s0; t < n; t++) { if (RL[t] < worst) { worst = RL[t]; wd = days[t]; } rmax = Math.max(rmax, run.RISK[t]); }
@@ -605,6 +608,49 @@
       '<li>Pendant le challenge, le moteur vise 8 % de volatilité au lieu de ' + upct(cfg.vol, 0) + ' (9e lot du labo : challenge réussi en 8 à 11 mois au lieu de 14 à 17, valeur médiane sur 4 ans +28 à +38 %, mais plus de challenges ratés). Les stops et le plafond de 2,9 % restent appliqués partout.</li>' +
       '<li>Le laboratoire (2009-2026) avait oublié les frais de rééquilibrage et laissait le risque dépasser 3 % un soir sur trois : l\'appli corrige les deux, ses chiffres sont donc plus bas et plus réalistes.</li>' +
       '<li>Résultats passés simulés : ils ne garantissent rien pour l\'avenir. Je ne suis pas conseiller financier.</li></ul>';
+  }
+  function chalOne(CHR, s, n) {                                       // un seul challenge acheté au soir s : réussi, raté ou en cours
+    var eq = 1, d = 0;
+    for (var i = s + 1; i < n; i++) {
+      d++;
+      if (CHR.RL[i] <= -0.03 || eq + CHR.RL[i] <= 0.94) return { res: 'ko', t: i, d: d };
+      eq += CHR.R[i];
+      if (eq >= 1.10 && d >= 2) return { res: 'ok', t: i, d: d };
+    }
+    return { res: 'run', t: n - 1, d: d, eq: eq };
+  }
+  function renderChallenges(run, CHR, B) {
+    var days = S.D.days, n = days.length, Yn = yearOf(days[n - 1]), mo = function (d) { return nf(d / 21, 0) + ' mois'; };
+    if (!B.chal) {
+      B.chal = [];
+      for (var y = 2012; y <= Yn; y++) {
+        var s0 = days.findIndex(function (d) { return yearOf(d) >= y; });
+        var sim = E.onestep(run.R, run.RL, s0 - 1, n - 1, cfg.size, fee(), false, 0, { r: CHR.R, rl: CHR.RL });
+        var first = sim.events.filter(function (e) { return e.type === 'reussite'; })[0];
+        var tries = sim.events.filter(function (e) { return e.type === 'achat' && (!first || e.t < first.t); }).length;
+        var pay = first ? sim.events.filter(function (e) { return e.type === 'paiement' && e.t > first.t && e.t <= first.t + 252; }).reduce(function (x, e) { return x + e.v; }, 0) : 0;
+        var c1 = chalOne(CHR, s0 - 1, n), ok = 0, ko = 0, on = 0;
+        for (var s = s0; s < n && yearOf(days[s]) === y; s += 5) { var r = chalOne(CHR, s, n); if (r.res === 'ok') ok++; else if (r.res === 'ko') ko++; else on++; }
+        B.chal.push({ y: y, c1: c1, first: first, tries: tries, pay: pay, ok: ok, ko: ko, on: on });
+      }
+    }
+    var cards = B.chal.slice().reverse().map(function (c) {
+      var d1 = days[Math.min(n - 1, c.c1.t)], N = c.ok + c.ko + c.on || 1;
+      var tag = c.c1.res === 'ok' ? '<span class="side l">Réussi</span>' : c.c1.res === 'ko' ? '<span class="side s">Raté</span>' : '<span class="side f">En cours</span>';
+      var r1 = c.c1.res === 'run' ? 'en cours depuis ' + mo(c.c1.d) + ', ' + pct(c.c1.eq - 1) + ' sur les +10 % visés'
+        : (c.c1.res === 'ok' ? 'réussi' : 'raté') + ' le ' + fullDay(d1) + ', après ' + mo(c.c1.d);
+      var fin = c.first ? 'le ' + fullDay(days[c.first.t]) + ', avec ' + c.tries + ' challenge' + (c.tries > 1 ? 's' : '') + ' payé' + (c.tries > 1 ? 's' : '') + ' (' + usd(c.tries * fee()) + ')' : 'pas encore';
+      return '<div class="chy"><div class="chy-h"><b>' + c.y + '</b>' + tag + '</div>' +
+        '<p><span>Challenge acheté début janvier</span>' + r1 + '</p>' +
+        '<p><span>Compte financé obtenu</span>' + fin + '</p>' +
+        (c.first ? '<p><span>Retraits la 1re année du compte financé</span><b class="' + (c.pay >= 0 ? 'pos' : 'neg') + '">' + sUsd(c.pay) + '</b></p>' : '') +
+        '<p><span>Tous les départs de l\'année (un par semaine)</span>' + Math.round(c.ok / N * 100) + ' % réussis, ' + Math.round(c.ko / N * 100) + ' % ratés' + (c.on ? ', ' + c.on + ' en cours' : '') + '</p>' +
+        '<div class="cbar"><i class="ok" style="width:' + (c.ok / N * 100).toFixed(1) + '%"></i><i class="ko" style="width:' + (c.ko / N * 100).toFixed(1) + '%"></i><i class="on" style="width:' + (c.on / N * 100).toFixed(1) + '%"></i></div></div>';
+    }).join('');
+    $('b-chal').innerHTML = '<div class="card-head"><h2>Les challenges année par année</h2><span class="small">1-Step ' + nf(cfg.size / 1000) + 'k, challenge à 8 % puis compte financé à ' + upct(cfg.vol, 0) + '</span></div>' +
+      '<div class="chys">' + cards + '</div>' +
+      '<div class="legend"><span><i class="dot" style="background:var(--good)"></i>réussis</span><span><i class="dot" style="background:var(--crit)"></i>ratés</span><span><i class="dot" style="background:var(--ink-3)"></i>encore en cours</span></div>' +
+      '<p class="muted">Un challenge raté est racheté aussitôt : « Compte financé obtenu » compte tous les challenges payés jusque-là. Les années se suivent par vagues : un challenge commencé dans une année agitée rate souvent, un challenge commencé en année calme réussit presque toujours.</p>';
   }
   function curveChart(el, xd, eq, dd) {
     var W = Math.max(280, el.clientWidth || 600), H = 220, padL = 40, padR = 8, padT = 10, padB = 22, n = eq.length;
