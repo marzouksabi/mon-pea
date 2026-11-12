@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 12/11 21:07';
+  var VERSION = 'version du 12/11 21:44';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -423,34 +423,45 @@
   /* ---- Positions ---- */
   function renderPos() {
     var run = S.run || S.off, t = run.T - 1, lots = lotsAt(run, t), day = dayOf(run, t), rows = [], tot = { risk: 0, pnl: 0, gross: 0, n: 0, long: 0, short: 0 };
-    var fam = { idx: [0, 0], fx: [0, 0], met: [0, 0] };
+    var fam = { idx: [0, 0], fx: [0, 0], met: [0, 0] }, open = {}, small = [];
+    buildTrades(run).forEach(function (x) { if (x.why === 'live') open[x.code] = x; });
     ORDER.forEach(function (code) {
       var j = IX[code], v = lots[j];
-      if (!v) { if (run.STOPPED[j][t]) rows.push({ code: code, flat: 'stop' }); return; }
+      if (!v) {
+        if (run.HELD[j][t]) small.push({ code: code, h: run.HELD[j][t], tr: open[code] });
+        else if (run.STOPPED[j][t]) rows.push({ code: code, flat: 'stop' });
+        return;
+      }
       var r = lastReset(run, j, t), val = Math.abs(v) * vpl(run, code, r), fr = val / cfg.size, st = stopOf(run, j, t);
       var risk = fr * riskUnit(run, j, t) * cfg.size, pnl = sgn(v) * fr * (run.C[j][t] / run.ENTRY[j][t] - 1) * cfg.size;
-      rows.push({ code: code, v: v, st: st, risk: risk, pnl: pnl, val: val, since: r });
+      rows.push({ code: code, v: v, st: st, risk: risk, pnl: pnl, val: val, since: r, tr: open[code] });
       tot.risk += risk; tot.pnl += pnl; tot.gross += val; tot.n++; if (v > 0) tot.long++; else tot.short++;
       fam[MK[code].f][v > 0 ? 0 : 1] += val / cfg.size;
     });
     var l2 = function (v) { return nf(Math.abs(v), cfg.step < 0.1 ? 2 : 1); };
+    var since = function (x) { if (!x.tr) return '—'; var d = dayOf(run, x.tr.t0); return shortDay(d) + (yearOf(d) !== yearOf(day) ? ' ' + yearOf(d) : ''); };
     $('p-sum').innerHTML = '<div class="card-head"><h2>Après les ordres du ' + longDay(day) + '</h2><span class="small">' + (run === S.off ? 'cours officiels' : 'cours du moment') + '</span></div>' +
       '<div class="stat4 q4"><div><span>Positions</span><b>' + tot.n + '</b><small>' + tot.long + ' achat' + (tot.long > 1 ? 's' : '') + ', ' + tot.short + ' vente' + (tot.short > 1 ? 's' : '') + '</small></div>' +
       '<div><span>Exposition</span><b>' + nf(tot.gross / cfg.size, 2) + ' ×</b><small>' + usd(tot.gross) + '</small></div>' +
       '<div><span>Risque aux stops</span><b>' + upct(tot.risk / cfg.size, 2) + '</b><small>' + usd(tot.risk) + ' sur 3 % max</small></div>' +
       '<div><span>Latent (estimé)</span><b class="' + (tot.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tot.pnl) + '</b><small>depuis l\'entrée</small></div></div>';
     var tr = rows.map(function (x) {
-      if (x.flat) return '<tr><td class="m"><b>' + x.code + '</b><span>' + esc(MK[x.code].n) + '</span></td><td><span class="side f">Stoppé</span></td><td colspan="5" style="text-align:left;color:var(--ink-3)">À plat jusqu\'à la prochaine révision</td></tr>';
-      return '<tr><td class="m"><b>' + x.code + '</b><span>' + esc(MK[x.code].n) + '</span></td><td><span class="side ' + (x.v > 0 ? 'l">Achat' : 's">Vente') + '</span></td><td>' + l2(x.v) + '</td>' +
+      if (x.flat) return '<tr><td class="m"><b>' + x.code + '</b><span>' + esc(MK[x.code].n) + '</span></td><td><span class="side f">Stoppé</span></td><td colspan="6" style="text-align:left;color:var(--ink-3)">À plat jusqu\'à la prochaine révision</td></tr>';
+      return '<tr><td class="m"><b>' + x.code + '</b><span>' + esc(MK[x.code].n) + '</span></td><td><span class="side ' + (x.v > 0 ? 'l">Achat' : 's">Vente') + '</span></td><td>' + since(x) + '</td><td>' + l2(x.v) + '</td>' +
         '<td>' + pxf(x.code, x.st.lvl) + '</td><td>' + x.st.unit + '</td><td>' + usd(x.risk) + '</td><td class="' + (x.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.pnl) + '</td></tr>';
     }).join('');
     var cards = rows.map(function (x) {
       if (x.flat) return '<div class="pc"><div class="h"><b>' + x.code + '</b><span class="side f">Stoppé</span></div><div class="small" style="margin-top:6px">À plat jusqu\'à la prochaine révision</div></div>';
       return '<div class="pc"><div class="h"><span><b>' + x.code + '</b> <span class="small">' + esc(MK[x.code].n) + '</span></span><span class="side ' + (x.v > 0 ? 'l">Achat ' : 's">Vente ') + l2(x.v) + '</span></div>' +
-        '<div class="g"><div><span>Stop</span><b>' + pxf(x.code, x.st.lvl) + '</b></div><div><span>Risque</span><b>' + usd(x.risk) + '</b></div><div><span>Latent</span><b class="' + (x.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.pnl) + '</b></div></div></div>';
+        '<div class="g"><div><span>Depuis</span><b>' + since(x) + '</b></div><div><span>Stop</span><b>' + pxf(x.code, x.st.lvl) + '</b></div><div><span>Risque</span><b>' + usd(x.risk) + '</b></div><div><span>Latent</span><b class="' + (x.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.pnl) + '</b></div></div></div>';
     }).join('');
-    $('p-list').innerHTML = '<h2>Positions et stops</h2>' + (rows.length ? '<div class="ptable-wrap scroll"><table class="ptable"><thead><tr><th>Marché</th><th>Sens</th><th>Lots</th><th>Stop</th><th>Distance</th><th>Risque</th><th>Latent</th></tr></thead><tbody>' + tr + '</tbody></table></div><div class="pcards">' + cards + '</div>'
-      : '<div class="empty">' + ico('flat') + 'Aucune position.</div>') + '<p class="muted">Latent : estimation depuis le prix d\'entrée du moteur ; votre MT5 fait foi.</p>';
+    var smallHtml = small.length ? '<div class="smallpos"><b>' + small.length + ' position' + (small.length > 1 ? 's' : '') + ' trop petite' + (small.length > 1 ? 's' : '') + ' pour un compte de ' + nf(cfg.size) + ' $</b> (moins d\'un demi-pas de ' + nf(cfg.step, 2) + ' lot), à ne pas prendre : ' +
+      small.map(function (x) { return x.code + ' ' + (x.h > 0 ? 'achat' : 'vente') + ' ' + upct(Math.abs(x.h), 1) + ' du compte'; }).join(', ') + '.</div>' : '';
+    $('p-list').innerHTML = '<div class="card-head"><h2>Positions à tenir sur MT5</h2><span class="small">' + rows.filter(function (x) { return !x.flat; }).length + ' sur 18 marchés</span></div>' +
+      '<p class="muted" style="margin-top:0">Ce sont les positions que votre compte doit avoir en ce moment, avec leur stop : les mêmes que les trades « En cours » de l\'onglet Trades. Au démarrage d\'un compte, ouvrez-les toutes ; ensuite, les ordres du soir les tiennent à jour.</p>' +
+      (rows.length ? '<div class="ptable-wrap scroll"><table class="ptable"><thead><tr><th>Marché</th><th>Sens</th><th>Depuis</th><th>Lots</th><th>Stop</th><th>Distance</th><th>Risque</th><th>Latent</th></tr></thead><tbody>' + tr + '</tbody></table></div><div class="pcards">' + cards + '</div>'
+      : '<div class="empty">' + ico('flat') + 'Aucune position à tenir' + (small.length ? ' : toutes sont trop petites pour ce compte.' : '.') + '</div>') + smallHtml +
+      '<p class="muted">Latent : estimation depuis le prix d\'entrée du moteur ; votre MT5 fait foi.</p>';
     var mx = Math.max(0.01, fam.idx[0] + fam.idx[1], fam.fx[0] + fam.fx[1], fam.met[0] + fam.met[1]);
     $('p-fam').innerHTML = '<h2>Exposition par famille</h2><div class="fam">' + ['idx', 'fx', 'met'].map(function (f) {
       var a = fam[f][0] / mx * 100, b = fam[f][1] / mx * 100;
@@ -798,7 +809,7 @@
       (L.length ? '<div class="trs">' + shown.map(row).join('') + '</div>' +
         (L.length > S.tmax ? '<button class="more-btn" data-tmore>Afficher ' + Math.min(40, L.length - S.tmax) + ' trades de plus (' + (L.length - S.tmax) + ' restants)</button>' : '')
         : '<div class="empty">' + ico('flat') + 'Aucun trade.</div>') +
-      '<p class="muted">Un trade va de l\'ouverture d\'une position à sa fermeture (stop, fin du signal ou retournement) ; les ajustements de taille entre les deux en font partie. Montants calculés sur la taille voulue par le moteur, avant arrondi des lots, aux cours officiels de clôture.</p>';
+      '<p class="muted">Les trades « En cours » sont les positions ouvertes en ce moment (onglet Positions, avec les lots de votre compte). Un trade va de l\'ouverture d\'une position à sa fermeture (stop, fin du signal ou retournement) ; les ajustements de taille entre les deux en font partie. Montants calculés sur la taille voulue par le moteur, avant arrondi des lots, aux cours officiels de clôture.</p>';
   }
   document.addEventListener('click', function (e) {
     var y = e.target.closest('[data-tyear]'), f = e.target.closest('[data-tfam]'), m = e.target.closest('[data-tmore]');

@@ -1,7 +1,7 @@
 /* Triade : ordres du soir du moteur à trois branches pour un compte FundedNext Stellar 1-Step. Ordinateur et iPhone. */
 :root{
   --bg-1:#eef0fa; --bg-2:#f7f7fc; --glow:rgba(139,140,255,.30);
-  --card:rgba(255,255,255,.78); --card-solid:#ffffff; --line:rgba(28,26,82,.09); --field:rgba(28,26,82,.05);
+  --card:rgba(255,255,255,.94); --card-solid:#ffffff; --line:rgba(28,26,82,.09); --field:rgba(28,26,82,.05);
   --ink:#14142b; --ink-2:#4d4e6b; --ink-3:#83849c;
   --accent:#4f4bd8; --accent-2:#3a36b8; --accent-soft:rgba(79,75,216,.11);
   --hero-1:#2b2a7a; --hero-2:#14123a; --hero-ink:#f3f3ff; --hero-ink-2:rgba(243,243,255,.72); --hero-field:rgba(255,255,255,.10);
@@ -14,7 +14,7 @@
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg-1:#0c0d18; --bg-2:#0f1020; --glow:rgba(99,102,241,.14);
-  --card:rgba(24,25,44,.80); --card-solid:#181a2e; --line:rgba(255,255,255,.08); --field:rgba(255,255,255,.05);
+  --card:#171829; --card-solid:#181a2e; --line:rgba(255,255,255,.08); --field:rgba(255,255,255,.05);
   --ink:#eeeefa; --ink-2:#aeb0c8; --ink-3:#7c7e98;
   --accent:#9b9bff; --accent-2:#c3c3ff; --accent-soft:rgba(155,155,255,.15);
   --hero-1:#2c2a80; --hero-2:#141233;
@@ -27,7 +27,7 @@
 }}
 :root[data-theme="dark"]{
   --bg-1:#0c0d18; --bg-2:#0f1020; --glow:rgba(99,102,241,.14);
-  --card:rgba(24,25,44,.80); --card-solid:#181a2e; --line:rgba(255,255,255,.08); --field:rgba(255,255,255,.05);
+  --card:#171829; --card-solid:#181a2e; --line:rgba(255,255,255,.08); --field:rgba(255,255,255,.05);
   --ink:#eeeefa; --ink-2:#aeb0c8; --ink-3:#7c7e98;
   --accent:#9b9bff; --accent-2:#c3c3ff; --accent-soft:rgba(155,155,255,.15);
   --hero-1:#2c2a80; --hero-2:#141233;
@@ -89,8 +89,7 @@ b{font-weight:650}
 .grid>*{grid-column:span 12;min-width:0}
 @media (min-width:760px){.s6,.s4,.s5,.s7,.s8{grid-column:span 6}.s12{grid-column:span 12}}
 @media (min-width:1100px){.s4{grid-column:span 4}.s5{grid-column:span 5}.s7{grid-column:span 7}.s8{grid-column:span 8}}
-.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:var(--shadow);
-  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:var(--shadow)}
 .card-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
 .card-head h2{margin:0}
 
@@ -353,3 +352,6 @@ b{font-weight:650}
 .presets button:hover{color:var(--accent);border-color:var(--accent)}
 .legend i.sq{width:12px;height:10px;border-radius:3px}
 .warnbox{padding:14px;border-radius:14px;background:var(--warn-soft);color:var(--ink);font-size:14px}
+.smallpos{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--field);font-size:13px;color:var(--ink-2)}
+.smallpos b{color:var(--ink)}
+.pc .g{grid-template-columns:repeat(4,1fr)}
