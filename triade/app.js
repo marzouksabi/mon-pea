@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 12/11 20:55';
+  var VERSION = 'version du 12/11 21:07';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -269,7 +269,7 @@
   }
 
   /* ---------- vues ---------- */
-  var TITLES = { soir: 'Ce soir', pos: 'Positions', trades: 'Trades', bilan: 'Bilan', compte: 'Compte' };
+  var TITLES = { soir: 'Ce soir', pos: 'Positions', trades: 'Trades', simu: 'Simuler', bilan: 'Bilan', compte: 'Compte' };
   function show(v) {
     if (!TITLES[v]) v = 'soir';
     S.view = v; store.set('view', v);
@@ -294,6 +294,7 @@
     else if (S.view === 'pos') renderPos();
     else if (S.view === 'bilan') renderBilan();
     else if (S.view === 'trades') renderTrades();
+    else if (S.view === 'simu') renderSimu();
     else renderCompte();
   }
   function stamp() {
@@ -741,6 +742,31 @@
     return out;
   }
   var WHY = { stop: 'Stop touché', fin: 'Fermée par le moteur', flip: 'Retournée', live: 'En cours' };
+  /* une ligne de trade dépliable ; size : taille du compte pour les montants et les lots ; tag : étiquette en plus (étape du compte) */
+  function tradeRow(tr, run, size, tag) {
+    var days = S.D.days, d0 = days[tr.t0], d1 = days[tr.t1], ns = tr.t1 - tr.t0, cls = tr.side > 0 ? 'buy' : 'sell', amt = tr.net * size;
+    var eng = tr.eng.map(Math.abs), es = eng[0] + eng[1] + eng[2] || 1;
+    var engTxt = ['Repli', 'Tendance', 'Indices'].map(function (nm, k) { return eng[k] / es >= 0.005 ? nm + ' ' + Math.round(eng[k] / es * 100) + ' %' : null; }).filter(Boolean).join(' · ');
+    var stp = tr.side > 0 ? tr.ref * (1 - tr.dist) : tr.ref * (1 + tr.dist), mv = tr.px1 / tr.px0 - 1;
+    var lv = size === cfg.size ? Math.abs(lotsAt(run, tr.t0)[tr.j]) : roundStep(tr.h0 * size / vpl(run, tr.code, tr.t0));
+    var lots = lv ? nf(lv, cfg.step < 0.1 ? 2 : 1) + ' lot' + (lv >= 2 ? 's' : '') : 'sous ' + nf(cfg.step / 2, 3) + ' lot : non pris';
+    var live = tr.why === 'live';
+    return '<details class="tr ' + cls + '"><summary><span class="i">' + ico(cls) + '</span><span class="w"><b>' + tr.code + '</b> <span class="small">' + (tr.side > 0 ? 'Achat' : 'Vente') + '</span>' +
+      '<span class="tag2' + (tr.why === 'stop' ? ' stop' : live ? ' live' : '') + '">' + WHY[tr.why] + '</span>' + (tag ? '<span class="tag2">' + tag + '</span>' : '') +
+      '<small>' + shortDay(d0) + (yearOf(d0) !== yearOf(d1) || live ? ' ' + yearOf(d0) : '') + ' → ' + (live ? 'en cours' : shortDay(d1) + ' ' + yearOf(d1)) + ' · ' + ns + ' séance' + (ns > 1 ? 's' : '') + '</small></span>' +
+      '<span class="r"><b class="' + (amt >= 0 ? 'pos' : 'neg') + '">' + sUsd(amt) + '</b><small>' + pct(tr.net, 2) + '</small></span></summary>' +
+      '<div class="td"><div><span>Entrée · ' + fullDay(d0) + '</span><b>' + pxf(tr.code, tr.px0) + '</b></div>' +
+      '<div><span>' + (live ? 'Dernier cours' : 'Sortie · ' + fullDay(d1)) + '</span><b>' + pxf(tr.code, tr.px1) + '</b></div>' +
+      '<div><span>Lots à l\'entrée (compte ' + nf(size / 1000) + 'k)</span><b>' + lots + '</b></div>' +
+      '<div><span>Stop de départ</span><b>' + pxf(tr.code, stp) + ' (' + upct(tr.dist, 2) + ')</b></div>' +
+      '<div><span>Taille</span><b>' + upct(tr.h0, 0) + ' du compte' + (tr.max > tr.h0 * 1.01 ? ', jusqu\'à ' + upct(tr.max, 0) : '') + '</b></div>' +
+      '<div><span>Ajustements de taille</span><b>' + tr.adj + '</b></div>' +
+      '<div><span>Variation du prix</span><b class="' + (mv * tr.side >= 0 ? 'pos' : 'neg') + '">' + pct(mv, 2) + '</b></div>' +
+      '<div><span>Frais estimés</span><b>' + usd(tr.cost * size, 2) + '</b></div>' +
+      '<div class="full"><span>D\'où vient la position (' + esc(MK[tr.code].n) + ')</span><b>' + engTxt + '</b><div class="eng">' +
+      ['var(--e1)', 'var(--e2)', 'var(--e3)'].map(function (c, k) { return '<i style="width:' + (eng[k] / es * 100).toFixed(1) + '%;background:' + c + '"></i>'; }).join('') + '</div></div></div></details>';
+  }
+
   function renderTrades() {
     var run = S.off, days = S.D.days, n = days.length, all = buildTrades(run), Yn = yearOf(days[n - 1]);
     var Y = S.tyear || Yn, yrs = ['Tout'];
@@ -766,30 +792,7 @@
       '<div><span>Meilleur</span><b class="pos">' + (best ? sUsd(best.net * size) : '—') + '</b><small>' + (best ? when(best) : '') + '</small></div>' +
       '<div><span>Pire</span><b class="neg">' + (worst ? sUsd(worst.net * size) : '—') + '</b><small>' + (worst ? when(worst) : '') + '</small></div>' +
       '<div><span>Durée moyenne</span><b>' + nf(dur, 0) + ' séances</b><small>' + (closed.length ? Math.round(stops / closed.length * 100) : 0) + ' % fermés par le stop</small></div></div>';
-    var lotsTxt = function (tr) {
-      var v = Math.abs(lotsAt(run, tr.t0)[tr.j]);
-      return v ? nf(v, cfg.step < 0.1 ? 2 : 1) + ' lot' + (v >= 2 ? 's' : '') : 'sous ' + nf(cfg.step / 2, 3) + ' lot : non pris';
-    };
-    var row = function (tr) {
-      var d0 = days[tr.t0], d1 = days[tr.t1], ns = tr.t1 - tr.t0, cls = tr.side > 0 ? 'buy' : 'sell', amt = tr.net * size;
-      var eng = tr.eng.map(Math.abs), es = eng[0] + eng[1] + eng[2] || 1;
-      var engTxt = ['Repli', 'Tendance', 'Indices'].map(function (nm, k) { return eng[k] / es >= 0.005 ? nm + ' ' + Math.round(eng[k] / es * 100) + ' %' : null; }).filter(Boolean).join(' · ');
-      var stp = tr.side > 0 ? tr.ref * (1 - tr.dist) : tr.ref * (1 + tr.dist), mv = tr.px1 / tr.px0 - 1;
-      return '<details class="tr ' + cls + '"><summary><span class="i">' + ico(cls) + '</span><span class="w"><b>' + tr.code + '</b> <span class="small">' + (tr.side > 0 ? 'Achat' : 'Vente') + '</span>' +
-        '<span class="tag2' + (tr.why === 'stop' ? ' stop' : tr.why === 'live' ? ' live' : '') + '">' + WHY[tr.why] + '</span>' +
-        '<small>' + shortDay(d0) + (yearOf(d0) !== yearOf(d1) || tr.why === 'live' ? ' ' + yearOf(d0) : '') + ' → ' + (tr.why === 'live' ? 'aujourd\'hui' : shortDay(d1) + ' ' + yearOf(d1)) + ' · ' + ns + ' séance' + (ns > 1 ? 's' : '') + '</small></span>' +
-        '<span class="r"><b class="' + (amt >= 0 ? 'pos' : 'neg') + '">' + sUsd(amt) + '</b><small>' + pct(tr.net, 2) + '</small></span></summary>' +
-        '<div class="td"><div><span>Entrée · ' + fullDay(d0) + '</span><b>' + pxf(tr.code, tr.px0) + '</b></div>' +
-        '<div><span>' + (tr.why === 'live' ? 'Dernier cours' : 'Sortie · ' + fullDay(d1)) + '</span><b>' + pxf(tr.code, tr.px1) + '</b></div>' +
-        '<div><span>Lots à l\'entrée (compte ' + nf(size / 1000) + 'k)</span><b>' + lotsTxt(tr) + '</b></div>' +
-        '<div><span>Stop de départ</span><b>' + pxf(tr.code, stp) + ' (' + upct(tr.dist, 2) + ')</b></div>' +
-        '<div><span>Taille</span><b>' + upct(tr.h0, 0) + ' du compte' + (tr.max > tr.h0 * 1.01 ? ', jusqu\'à ' + upct(tr.max, 0) : '') + '</b></div>' +
-        '<div><span>Ajustements de taille</span><b>' + tr.adj + '</b></div>' +
-        '<div><span>Variation du prix</span><b class="' + (mv * tr.side >= 0 ? 'pos' : 'neg') + '">' + pct(mv, 2) + '</b></div>' +
-        '<div><span>Frais estimés</span><b>' + usd(tr.cost * size, 2) + '</b></div>' +
-        '<div class="full"><span>D\'où vient la position (' + esc(MK[tr.code].n) + ')</span><b>' + engTxt + '</b><div class="eng">' +
-        ['var(--e1)', 'var(--e2)', 'var(--e3)'].map(function (c, k) { return '<i style="width:' + (eng[k] / es * 100).toFixed(1) + '%;background:' + c + '"></i>'; }).join('') + '</div></div></div></details>';
-    };
+    var row = function (tr) { return tradeRow(tr, run, size); };
     var shown = L.slice(0, S.tmax);
     $('t-list').innerHTML = '<div class="card-head"><h2>Détail des trades</h2><span class="small">du plus récent au plus ancien · touchez un trade</span></div>' +
       (L.length ? '<div class="trs">' + shown.map(row).join('') + '</div>' +
@@ -803,6 +806,189 @@
     else if (f) { S.tfam = f.dataset.tfam; S.tmax = 40; renderTrades(); }
     else if (m) { S.tmax += 40; renderTrades(); }
   });
+
+  /* ---- Simuler : le parcours d'un compte choisi (taille, date d'achat du challenge, fin, rythme des retraits) ---- */
+  var EVERY_TXT = { 5: 'tous les 5 jours de bourse', 10: 'toutes les 2 semaines', 21: 'tous les mois', 0: 'aucun retrait avant la fin' };
+  function simuPrice(M) { return Math.round(PRICE[M.size] * (M.swap ? 1.1 : 1) * 100) / 100; }
+  function simuSetup() {
+    if (S.simuReady) return;
+    S.simuReady = true;
+    var days = S.D.days, n = days.length, firstI = days.findIndex(function (d) { return yearOf(d) >= 2012; });
+    $('m-size').innerHTML = Object.keys(PRICE).map(function (k) { return '<option value="' + k + '">' + nf(+k) + ' $ (' + usd(PRICE[k], 2) + ')</option>'; }).join('');
+    ['m-start', 'm-end'].forEach(function (id) { $(id).min = ds(days[firstI]); $(id).max = ds(days[n - 1]); });
+    var yrs = [1, 2, 3, 5, 10];
+    $('m-presets').innerHTML = '<span>Acheté il y a</span>' + yrs.map(function (y) { return '<button type="button" data-mago="' + y + '">' + y + ' an' + (y > 1 ? 's' : '') + '</button>'; }).join('') +
+      '<button type="button" data-mago="2020">janv. 2020</button><button type="button" data-mago="2022">janv. 2022</button>';
+    ['m-size', 'm-start', 'm-end', 'm-every', 'm-vol', 'm-swap'].forEach(function (id) {
+      $(id).addEventListener('change', function () {
+        var M = S.sim;
+        M.size = +$('m-size').value; M.start = $('m-start').value || M.start; M.end = $('m-end').value; M.every = +$('m-every').value; M.vol = +$('m-vol').value; M.swap = $('m-swap').checked;
+        store.set('simu', M); S.smax = 40; renderSimu();
+      });
+    });
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-mago]'), m = e.target.closest('[data-smore]');
+      if (b) {
+        var v = +b.dataset.mago, last = S.D.days[S.D.days.length - 1], d = new Date(last * DAY);
+        S.sim.start = v > 1000 ? v + '-01-02' : (d.getUTCFullYear() - v) + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+        S.sim.end = ''; store.set('simu', S.sim); S.smax = 40; renderSimu();
+      } else if (m) { S.smax += 40; renderSimu(); }
+    });
+  }
+  function renderSimu() {
+    simuSetup();
+    var M = S.sim || (S.sim = store.get('simu', null) || { size: cfg.size, swap: cfg.swap, start: '2020-01-02', end: '', every: 5, vol: cfg.vol });
+    if (!PRICE[M.size]) M.size = 50000;
+    var days = S.D.days, n = days.length, firstI = days.findIndex(function (d) { return yearOf(d) >= 2012; });
+    $('m-size').value = String(M.size); $('m-start').value = M.start; $('m-end').value = M.end || ds(days[n - 1]); $('m-every').value = String(M.every); $('m-vol').value = String(M.vol); $('m-swap').checked = !!M.swap;
+    var i0 = Math.max(firstI, days.findIndex(function (d) { return d >= dn(M.start); })), i1 = n - 1;
+    if (M.end) { var k = days.length - 1; while (k > 0 && days[k] > dn(M.end)) k--; i1 = k; }
+    if (i0 < 0 || i1 - i0 < 5) {
+      $('m-hero').innerHTML = '<div class="big">Période trop courte</div><p>Choisissez une fin au moins une semaine après l\'achat du challenge.</p>';
+      ['m-curve', 'm-cash', 'm-stats', 'm-years', 'm-journey', 'm-trades'].forEach(function (id) { $(id).innerHTML = ''; });
+      return;
+    }
+    var size = M.size, price = simuPrice(M), F = getRun(M.vol), C = getRun(CH_VOL), never = M.every === 0;
+    var sim = E.onestep(F.R, F.RL, i0, i1, size, price, never, 0, { r: C.R, rl: C.RL }, M.every || 5);
+    var fin = sim.net + (never ? sim.rest : 0), acc = sim.account, len = i1 - i0, months = len / 21;
+    var xd = days.slice(i0 + 1, i1 + 1), ev = sim.events;
+    var buys = ev.filter(function (e) { return e.type === 'achat'; }), pays = ev.filter(function (e) { return e.type === 'paiement'; }), oks = ev.filter(function (e) { return e.type === 'reussite'; });
+    var kos = ev.filter(function (e) { return e.type === 'crame' && e.ph === 1; }).length, fburn = ev.filter(function (e) { return e.type === 'crame' && e.ph === 3; }).length;
+    // résultat du trading jour par jour (le moteur du challenge pendant les challenges, celui du compte financé ensuite)
+    var pnl = [], low = [];
+    for (var q = 0; q < len; q++) { var t = i0 + 1 + q, ph = q ? sim.phase[q - 1] : 1, src = ph === 1 ? C : F; pnl.push(size * src.R[t]); low.push(size * src.RL[t]); }
+    var be = -1; for (q = 0; q < sim.cash.length; q++) if (sim.cash[q] >= 0) { be = q; break; }
+    var state = acc.ph === 1 ? 'challenge en cours, solde ' + usd(acc.eq) + ' (objectif ' + usd(1.1 * size) + ')' : 'compte financé, solde ' + usd(acc.eq) + (never ? '' : ' après le dernier retrait');
+    $('m-hero').innerHTML = '<div class="card-head"><h3>Stellar 1-Step ' + nf(size) + ' $ acheté le ' + fullDay(days[i0]) + ', jusqu\'au ' + fullDay(days[i1]) + '</h3><span class="tri" aria-hidden="true"><i></i><i></i><i></i></span></div>' +
+      '<div class="count">' + sUsd(fin) + '</div><p class="sub">' + (never ? 'net si tout est retiré le ' + fullDay(days[i1]) : 'net : retraits reçus − challenges payés') + '</p>' +
+      '<p>' + buys.length + ' challenge' + (buys.length > 1 ? 's' : '') + ' acheté' + (buys.length > 1 ? 's' : '') + ' à ' + usd(price, 2) + ' (' + usd(sim.fees) + ') : ' + oks.length + ' réussi' + (oks.length > 1 ? 's' : '') + ', ' + kos + ' raté' + (kos > 1 ? 's' : '') + (fburn ? ', ' + fburn + ' compte' + (fburn > 1 ? 's' : '') + ' financé' + (fburn > 1 ? 's' : '') + ' cramé' + (fburn > 1 ? 's' : '') : '') + '. ' +
+      (never ? '' : pays.length + ' retrait' + (pays.length > 1 ? 's' : '') + ' (' + EVERY_TXT[M.every] + ') pour ' + usd(sim.paid) + ' reçus. ') + 'À la fin : ' + state + '.' +
+      (!never && sim.rest > 0 ? ' Encore ' + usd(sim.rest) + ' à retirer.' : '') + '</p>' +
+      '<div class="kpis"><div><span>Durée</span><b>' + (months >= 24 ? nf(months / 12, 1) + ' ans' : nf(months, 0) + ' mois') + '</b></div>' +
+      '<div><span>Rentabilisé</span><b>' + (be >= 0 ? shortDay(xd[be]) + ' ' + yearOf(xd[be]) : 'pas encore') + '</b></div>' +
+      '<div><span>Par mois</span><b>' + sUsd(fin / Math.max(1, months)) + '</b></div>' +
+      '<div><span>Premier retrait</span><b>' + (pays.length ? shortDay(days[pays[0].t]) + ' ' + yearOf(days[pays[0].t]) : '—') + '</b></div></div>';
+
+    // solde du compte
+    $('m-curve').innerHTML = '<div class="card-head"><h2>Solde du compte</h2><span class="small">en dollars, un challenge raté repart de ' + nf(size) + ' $</span></div><div class="chart" id="m-chart"></div>' +
+      '<div class="legend"><span><i class="sq" style="background:var(--accent-soft)"></i>challenge</span><span><i style="background:var(--accent)"></i>solde</span><span><i style="background:var(--good)"></i>objectif +10 %</span><span><i style="background:var(--crit)"></i>seuil de perte</span>' +
+      '<span><i class="dot" style="background:var(--good)"></i>retrait</span><span><i class="dot" style="background:var(--crit)"></i>cramé</span></div>';
+    simuChart($('m-chart'), xd, sim, size, i0);
+
+    // argent reçu moins dépensé
+    var c = sim.cash.slice(); if (never) c[c.length - 1] += sim.rest;
+    $('m-cash').innerHTML = '<div class="card-head"><h2>Ce que le compte vous a rapporté</h2><span class="small">retraits − challenges, cumulé</span></div><div class="chart" id="m-cashc"></div>' +
+      '<p class="muted">' + (be >= 0 ? 'Les achats de challenges sont remboursés par les retraits à partir du ' + fullDay(xd[be]) + ' (' + nf((be + 1) / 21, 0) + ' mois après l\'achat).' : 'Les retraits n\'ont pas encore remboursé les challenges achetés.') + '</p>';
+    lineChart($('m-cashc'), xd, c, 'var(--good)', true);
+
+    // statistiques
+    var durs = []; oks.forEach(function (o) { var b = buys.filter(function (x) { return x.t < o.t; }).pop(); if (b) durs.push(o.t - b.t); });
+    var mo = {}, cum = 0, pk = 0, mdd = 0, wl = 0, wlT = 0;
+    for (q = 0; q < len; q++) {
+      var key = yearOf(xd[q]) + '-' + new Date(xd[q] * DAY).getUTCMonth(); mo[key] = (mo[key] || 0) + pnl[q];
+      cum += pnl[q]; pk = Math.max(pk, cum); mdd = Math.min(mdd, cum - pk); if (low[q] < wl) { wl = low[q]; wlT = q; }
+    }
+    var mv = Object.keys(mo).map(function (k2) { return mo[k2]; }), mpos = mv.filter(function (v) { return v > 0; }).length;
+    var avgPay = pays.length ? sim.paid / pays.length : 0, maxPay = pays.reduce(function (x, e) { return Math.max(x, e.v); }, 0);
+    var fd = sim.phase.filter(function (p) { return p === 3; }).length;
+    $('m-stats').innerHTML = '<h2>Statistiques</h2><div class="stat4 q6">' +
+      '<div><span>Challenges</span><b>' + oks.length + ' / ' + buys.length + '</b><small>réussis / achetés</small></div>' +
+      '<div><span>Durée d\'un challenge réussi</span><b>' + (durs.length ? nf(durs.reduce(function (x, y) { return x + y; }, 0) / durs.length / 21, 1) + ' mois' : '—') + '</b><small>en moyenne</small></div>' +
+      '<div><span>Temps sur compte financé</span><b>' + nf(fd / 21, 0) + ' mois</b><small>sur ' + nf(months, 0) + '</small></div>' +
+      '<div><span>Retraits</span><b>' + pays.length + '</b><small>' + (pays.length ? 'moyen ' + usd(avgPay) + ', plus gros ' + usd(maxPay) : 'aucun') + '</small></div>' +
+      '<div><span>Pire journée</span><b class="neg">' + usd(wl) + '</b><small>' + fullDay(xd[wlT]) + '</small></div>' +
+      '<div><span>Pire recul du trading</span><b class="neg">' + usd(mdd) + '</b><small>' + Math.round(mpos / Math.max(1, mv.length) * 100) + ' % de mois gagnants</small></div></div>';
+
+    // année par année
+    var Y = {};
+    for (q = 0; q < len; q++) { var yy = yearOf(xd[q]); Y[yy] = Y[yy] || { pnl: 0, pay: 0, buy: 0 }; Y[yy].pnl += pnl[q]; }
+    ev.forEach(function (e) { var yy = yearOf(days[Math.min(n - 1, e.t + (e.type === 'achat' && e.t === i0 ? 0 : 0))]); Y[yy] = Y[yy] || { pnl: 0, pay: 0, buy: 0 }; if (e.type === 'paiement') Y[yy].pay += e.v; if (e.type === 'achat') Y[yy].buy -= e.v; });
+    $('m-years').innerHTML = '<h2>Année par année</h2><div class="scroll"><table class="ptable"><thead><tr><th>Année</th><th>Trading</th><th>Retraits</th><th>Challenges</th><th>Net</th></tr></thead><tbody>' +
+      Object.keys(Y).sort().reverse().map(function (yy) { var o = Y[yy], net = o.pay - o.buy;
+        return '<tr><td>' + yy + '</td><td class="' + (o.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(o.pnl) + '</td><td>' + usd(o.pay) + '</td><td>' + (o.buy ? '−' + usd(o.buy) : '0 $') + '</td><td class="' + (net >= 0 ? 'pos' : 'neg') + '">' + sUsd(net) + '</td></tr>'; }).join('') +
+      '</tbody></table></div><p class="muted">Trading : gains et pertes du moteur sur le compte de l\'année (challenge ou financé). Les gains d\'un challenge ne se retirent pas ; ceux du compte financé se retirent à 80 %.</p>';
+
+    // parcours
+    var rev = ev.slice().reverse(), evRow = function (e) {
+      var d = days[Math.min(n - 1, e.t)];
+      if (e.type === 'paiement') return '<div class="e pay"><span class="i">' + ico('cash') + '</span><span>Retrait n° ' + e.n + '<small>' + fullDay(d) + ' · 80 % de ' + usd(e.gross) + (e.refund ? ' + challenge remboursé' : '') + '</small></span><span class="a pos">' + sUsd(e.v) + '</span></div>';
+      if (e.type === 'achat') return '<div class="e buy"><span class="i">' + ico('cart') + '</span><span>Achat du challenge<small>' + fullDay(d) + '</small></span><span class="a">' + sUsd(e.v) + '</span></div>';
+      if (e.type === 'reussite') return '<div class="e ok"><span class="i">' + ico('check') + '</span><span>Challenge réussi<small>' + fullDay(d) + ' · +10 % en ' + nf(e.days / 21, 1) + ' mois</small></span><span class="a">financé</span></div>';
+      return '<div class="e burn"><span class="i">' + ico('flame') + '</span><span>' + (e.ph === 1 ? 'Challenge raté' : 'Compte financé cramé') + '<small>' + fullDay(d) + ' · ' + (e.why === 'jour' ? 'perte du jour au-delà de 3 %' : 'solde sous ' + usd(0.94 * size)) + '</small></span><span class="a neg">0 $</span></div>';
+    };
+    $('m-journey').innerHTML = '<div class="card-head"><h2>Parcours du compte</h2><span class="small">du plus récent au plus ancien</span></div><div class="jr">' + rev.slice(0, 8).map(evRow).join('') + '</div>' +
+      (rev.length > 8 ? '<details class="jr-more"><summary>Voir tout le parcours (' + rev.length + ' étapes)</summary><div class="jr">' + rev.slice(8).map(evRow).join('') + '</div></details>' : '');
+
+    // trades de la période, pris dans le moteur de l'étape où ils ont été ouverts
+    var L = [];
+    [[C, 1, 'challenge'], [F, 3, 'financé']].forEach(function (x) {
+      buildTrades(x[0]).forEach(function (tr) { if (tr.t0 > i0 && tr.t0 <= i1 && sim.phase[tr.t0 - i0 - 1] === x[1]) L.push({ tr: tr, run: x[0], tag: x[2] }); });
+    });
+    L.sort(function (a, b) { return b.tr.t0 - a.tr.t0; });
+    var closed = L.filter(function (o) { return o.tr.why !== 'live'; }), win = closed.filter(function (o) { return o.tr.net > 0; }).length, tot = L.reduce(function (x, o) { return x + o.tr.net * size; }, 0);
+    var mx = S.smax || 40;
+    $('m-trades').innerHTML = '<div class="card-head"><h2>Les trades de la période</h2><span class="small">' + L.length + ' trades · ' + (closed.length ? Math.round(win / closed.length * 100) : 0) + ' % gagnants · ' + sUsd(tot) + '</span></div>' +
+      (L.length ? '<div class="trs">' + L.slice(0, mx).map(function (o) { return tradeRow(o.tr, o.run, size, o.tag); }).join('') + '</div>' +
+        (L.length > mx ? '<button class="more-btn" data-smore>Afficher ' + Math.min(40, L.length - mx) + ' trades de plus (' + (L.length - mx) + ' restants)</button>' : '') : '<div class="empty">' + ico('flat') + 'Aucun trade.</div>') +
+      '<p class="muted">Chaque trade est celui du moteur de l\'étape où il a été ouvert (challenge à 8 %, compte financé à ' + upct(M.vol, 0) + '). Au passage d\'un compte à l\'autre, le nouveau compte démarre vide : les montants y sont approximatifs.</p>';
+  }
+  /* courbe du solde : fond coloré pendant les challenges, objectif, seuil, retraits et comptes cramés */
+  function simuChart(el, xd, sim, size, i0) {
+    var bal = sim.bal, ph = sim.phase, n = bal.length, W = Math.max(280, el.clientWidth || 600), H = 230, padL = 52, padR = 8, padT = 10, padB = 22;
+    var mx = Math.max(size * 1.11, Math.max.apply(null, bal)), mn = Math.min(size * 0.93, Math.min.apply(null, bal));
+    var X = function (i) { return padL + i / Math.max(1, n - 1) * (W - padL - padR); }, Yv = function (v) { return padT + (mx - v) / (mx - mn) * (H - padT - padB); };
+    var bands = '', st = -1;
+    for (var i = 0; i <= n; i++) {
+      var inC = i < n && ph[i] === 1;
+      if (inC && st < 0) st = i;
+      if (!inC && st >= 0) { bands += '<rect x="' + X(st).toFixed(1) + '" y="' + padT + '" width="' + Math.max(1, X(i - 1) - X(st)).toFixed(1) + '" height="' + (H - padT - padB) + '" fill="var(--accent-soft)"/>' +
+        '<line x1="' + X(st).toFixed(1) + '" x2="' + X(i - 1).toFixed(1) + '" y1="' + Yv(1.1 * size).toFixed(1) + '" y2="' + Yv(1.1 * size).toFixed(1) + '" stroke="var(--good)" stroke-dasharray="4 3"/>'; st = -1; }
+    }
+    var step = Math.max(1, Math.floor(n / 700)), lb = '';
+    for (i = 0; i < n; i += step) lb += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Yv(bal[i]).toFixed(1);
+    lb += 'L' + X(n - 1).toFixed(1) + ' ' + Yv(bal[n - 1]).toFixed(1);
+    var range = mx - mn, tk = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000].filter(function (v) { return range / v <= 6; })[0] || 100000, ticks = '';
+    for (var v = Math.ceil(mn / tk) * tk; v <= mx; v += tk) ticks += '<line class="gl" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(v).toFixed(1) + '" y2="' + Yv(v).toFixed(1) + '"/><text class="ax" x="' + (padL - 6) + '" y="' + (Yv(v) + 4).toFixed(1) + '" text-anchor="end">' + nf(v / 1000, v % 1000 ? 1 : 0) + ' k</text>';
+    var yl = '', lastY = null, every = n > 1500 ? 2 : 1;
+    for (i = 0; i < n; i++) { var yy = yearOf(xd[i]); if (yy !== lastY) { if (lastY !== null && yy % every === 0) yl += '<text class="ax" x="' + X(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + yy + '</text>'; lastY = yy; } }
+    if (n < 300) { yl = ''; var lm = null; for (i = 0; i < n; i++) { var mm = new Date(xd[i] * DAY).getUTCMonth(); if (mm !== lm) { if (lm !== null && mm % (n > 120 ? 3 : 1) === 0) yl += '<text class="ax" x="' + X(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + MOIS[mm] + '</text>'; lm = mm; } } }
+    var marks = '';
+    sim.events.forEach(function (e) {
+      var k = e.t - i0 - 1; if (k < 0 || k >= n) return;
+      if (e.type === 'paiement') marks += '<circle cx="' + X(k).toFixed(1) + '" cy="' + Yv(bal[k] + e.gross).toFixed(1) + '" r="3" fill="var(--good)"/>';
+      if (e.type === 'crame') marks += '<circle cx="' + X(k).toFixed(1) + '" cy="' + Yv(Math.max(mn, 0.94 * size)).toFixed(1) + '" r="4.5" fill="var(--crit)"/>';
+    });
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Solde du compte">' + bands + ticks + yl +
+      '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(0.94 * size).toFixed(1) + '" y2="' + Yv(0.94 * size).toFixed(1) + '" stroke="var(--crit)" stroke-width="1.2"/>' +
+      '<path class="ln" d="' + lb + '" stroke="var(--accent)"/>' + marks + '<line class="cross" y1="' + padT + '" y2="' + (H - padB) + '" style="display:none"/></svg><div class="tip" hidden></div>';
+    var svg = el.querySelector('svg'), tip = el.querySelector('.tip'), cross = el.querySelector('.cross');
+    var move = function (evn) {
+      var r = svg.getBoundingClientRect(), px = (evn.touches ? evn.touches[0].clientX : evn.clientX) - r.left, k = Math.round((px * W / r.width - padL) / (W - padL - padR) * (n - 1));
+      if (k < 0 || k >= n) { tip.hidden = true; cross.style.display = 'none'; return; }
+      cross.setAttribute('x1', X(k)); cross.setAttribute('x2', X(k)); cross.style.display = '';
+      tip.hidden = false; tip.style.left = (X(k) * r.width / W) + 'px'; tip.style.top = (Yv(bal[k]) * r.height / H - 8) + 'px';
+      tip.innerHTML = fullDay(xd[k]) + '<br>' + (ph[k] === 1 ? 'Challenge' : 'Compte financé') + ' · solde <b>' + usd(bal[k]) + '</b>';
+    };
+    svg.addEventListener('mousemove', move); svg.addEventListener('touchmove', move, { passive: true });
+    svg.addEventListener('mouseleave', function () { tip.hidden = true; cross.style.display = 'none'; });
+  }
+  /* courbe simple en dollars, avec la ligne du zéro */
+  function lineChart(el, xd, ys, color, zero) {
+    var n = ys.length, W = Math.max(260, el.clientWidth || 400), H = 190, padL = 52, padR = 8, padT = 10, padB = 22;
+    var mx = Math.max(0, Math.max.apply(null, ys)), mn = Math.min(0, Math.min.apply(null, ys)); if (mx === mn) mx = mn + 1;
+    var X = function (i) { return padL + i / Math.max(1, n - 1) * (W - padL - padR); }, Yv = function (v) { return padT + (mx - v) / (mx - mn) * (H - padT - padB); };
+    var step = Math.max(1, Math.floor(n / 500)), d = '';
+    for (var i = 0; i < n; i += step) d += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Yv(ys[i]).toFixed(1);
+    d += 'L' + X(n - 1).toFixed(1) + ' ' + Yv(ys[n - 1]).toFixed(1);
+    var area = d + 'L' + X(n - 1).toFixed(1) + ' ' + Yv(0).toFixed(1) + 'L' + X(0).toFixed(1) + ' ' + Yv(0).toFixed(1) + 'Z';
+    var range = mx - mn, tk = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000].filter(function (v) { return range / v <= 5; })[0] || 100000, ticks = '';
+    for (var v = Math.ceil(mn / tk) * tk; v <= mx; v += tk) ticks += '<line class="gl" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(v).toFixed(1) + '" y2="' + Yv(v).toFixed(1) + '"/><text class="ax" x="' + (padL - 6) + '" y="' + (Yv(v) + 4).toFixed(1) + '" text-anchor="end">' + (Math.abs(v) >= 1000 ? nf(v / 1000, v % 1000 ? 1 : 0) + ' k' : nf(v)) + '</text>';
+    var yl = '', lastY = null;
+    for (i = 0; i < n; i++) { var yy = yearOf(xd[i]); if (yy !== lastY) { if (lastY !== null && (n < 1500 || yy % 2 === 0)) yl += '<text class="ax" x="' + X(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + yy + '</text>'; lastY = yy; } }
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Argent reçu moins dépensé">' + ticks + yl +
+      '<path d="' + area + '" fill="' + color + '" opacity=".12"/>' + (zero ? '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(0).toFixed(1) + '" y2="' + Yv(0).toFixed(1) + '" stroke="var(--ink-3)"/>' : '') +
+      '<path class="ln" d="' + d + '" stroke="' + color + '"/><text class="ax" x="' + (W - padR) + '" y="' + (Yv(ys[n - 1]) - 6).toFixed(1) + '" text-anchor="end" style="font-weight:700;fill:var(--ink)">' + sUsd(ys[n - 1]) + '</text></svg>';
+  }
 
   /* ---- Compte ---- */
   function renderCompte() {
@@ -873,7 +1059,7 @@
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') refresh(false); });
   setInterval(function () { if (document.visibilityState === 'visible' && S.D && moment().pend.length) fetchQuotes().then(render); else if (S.D) render(); }, 60000);
   var resizeT = null;
-  window.addEventListener('resize', function () { clearTimeout(resizeT); resizeT = setTimeout(function () { if (S.view === 'bilan') renderBilan(); }, 200); });
+  window.addEventListener('resize', function () { clearTimeout(resizeT); resizeT = setTimeout(function () { if (S.view === 'bilan') renderBilan(); if (S.view === 'simu') renderSimu(); }, 200); });
   var first = (location.hash || '#' + S.view).slice(1);
   refresh(true).then(function () { show(first); });
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('../sw.js', { scope: '../' }).catch(function () { /* hors ligne non disponible */ });
