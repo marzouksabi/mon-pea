@@ -335,7 +335,7 @@
      du solde de départ ; perte du jour 3 % et perte maximale 6 % fixe sous le solde de départ, vérifiées au plus bas du jour ;
      retrait tous les 5 jours de bourse à 80 %, prix du challenge remboursé au 3e retrait ; compte cramé = nouveau challenge.
      noWithdraw : aucun retrait, les gains restent sur le compte financé. */
-  function onestep(r, rl, s0, e0, size, fee, noWithdraw) {
+  function onestep(r, rl, s0, e0, size, fee, noWithdraw, margin) {   // margin : part du compte gardée au-dessus du départ avant de retirer
     var paid = 0, fees = fee, burnt = 0, passed = 0, ev = [{ t: s0, type: 'achat', v: -fee }], bal = [], floor = [];
     var fresh = function () { return { ph: 1, eq: size, days: 0, next: 0, n: 0 }; }, a = fresh();
     for (var i = s0 + 1; i <= e0; i++) {
@@ -352,12 +352,13 @@
         a = { ph: 3, eq: size, days: 0, next: i + 5, n: 0 };
       } else if (a.ph === 3 && !noWithdraw && i >= a.next) {
         a.next = i + 5;
-        var g = a.eq - size;
-        if (g > 0) { a.n++; var x = 0.8 * g + (a.n === 3 ? fee : 0); paid += x; ev.push({ t: i, type: 'paiement', v: x, gross: g, n: a.n, refund: a.n === 3 ? fee : 0 }); a.eq = size; }
+        var g = a.eq - size * (1 + (margin || 0));
+        if (g > 0) { a.n++; var x = 0.8 * g + (a.n === 3 ? fee : 0); paid += x; ev.push({ t: i, type: 'paiement', v: x, gross: g, n: a.n, refund: a.n === 3 ? fee : 0 }); a.eq -= g; }
       }
       bal.push(a.eq); floor.push(0.94 * size);
     }
-    return { net: paid - fees, paid: paid, fees: fees, burnt: burnt, passed: passed, events: ev, account: a, bal: bal, mll: floor };
+    var rest = a.ph === 3 ? Math.max(0, a.eq - size) * 0.8 + (a.eq > size && a.n === 2 ? fee : 0) : 0;   // tout retiré au dernier jour
+    return { net: paid - fees, paid: paid, fees: fees, burnt: burnt, passed: passed, events: ev, account: a, bal: bal, mll: floor, rest: rest };
   }
 
   var api = { CODES: CODES, decode: decode, run: run, instant: instant, onestep: onestep, median: median, std: std };
