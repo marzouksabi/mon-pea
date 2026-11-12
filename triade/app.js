@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 12/11 22:10';
+  var VERSION = 'version du 12/11 22:19';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -281,6 +281,7 @@
     window.scrollTo(0, 0);
   }
   document.querySelectorAll('.nav button').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.v); }); });
+  document.addEventListener('click', function (e) { var g = e.target.closest('[data-go]'); if (g) show(g.dataset.go); });
 
   function render() {
     if (!S.D) return;
@@ -339,21 +340,24 @@
     var t = run.T - 1, day = dayOf(run, t), od = ordersAt(run, t), n = od.list.length, dkey = ds(day);
     var rev = run.isRevision(t), nr = nextRevision(run, t, day), nd = od.list.filter(function (o) { return done[dkey + ':' + o.code]; }).length;
     var big, sub, chips = [];
-    var cnt = function (k) { return k === 0 ? 'Rien à faire' : k + ' ordre' + (k > 1 ? 's' : ''); };
+    var ns = od.list.filter(function (o) { return o.type !== 'stop'; }).length, nm = n - ns, nopen = lotsAt(run, t).filter(function (v) { return v; }).length;
+    var lab = (ns ? ns + (ns > 1 ? ' signaux' : ' signal') : 'Aucun signal') + (nm ? (ns ? ' + ' : ', ') + nm + ' stop' + (nm > 1 ? 's' : '') + ' à déplacer' : '');
+    var cnt = function () { return lab; };
+    var none = 'Aucune position à ouvrir, fermer ou changer : vos ' + nopen + ' trades en cours restent en place avec leurs stops.';
     if (m.ph === 'jour') {
-      big = n ? 'Ce soir : ' + cnt(n) + ' à passer' : 'Ce soir : rien à faire';
+      big = 'Ce soir : ' + lab;
       sub = 'Aperçu avec les cours du moment (différés de 10 à 20 min) : la liste peut encore changer. Ordres définitifs à partir de ' + hm(m.win) + ', à passer avant ' + hm(m.cl) + '.';
       chips.push('<span class="chip">' + ico('clock') + 'Dans ' + dur(m.win - m.now) + '</span>');
     } else if (m.ph === 'fenetre') {
-      big = n ? 'C\'est l\'heure : ' + cnt(n) : 'C\'est l\'heure : rien à faire';
-      sub = n ? 'Passez ces ordres sur MT5 avec leur stop avant ' + hm(m.cl) + ' (clôture de New York), puis cochez-les.' : 'Aucune position à changer ce soir. Les stops en place restent valables.';
+      big = 'C\'est l\'heure : ' + lab;
+      sub = n ? 'Passez ces ordres sur MT5 avant ' + hm(m.cl) + ' (clôture de New York), puis cochez-les.' : none;
       chips.push('<span class="chip">' + ico('clock') + 'Clôture dans ' + dur(m.cl - m.now) + '</span>');
     } else if (m.ph === 'apres') {
-      big = n ? 'Clôture passée : ' + cnt(n) : 'Clôture passée : rien à faire';
-      sub = n ? 'Si ce n\'est pas fait, passez-les maintenant : les CFD restent ouverts jusqu\'à 23 h environ. Les cours officiels arrivent dans la soirée et confirment la liste.' : 'Rien à changer ce soir. Les cours officiels arrivent dans la soirée.';
+      big = 'Clôture passée : ' + lab;
+      sub = n ? 'Si ce n\'est pas fait, passez-les maintenant : les CFD restent ouverts jusqu\'à 23 h environ. Les cours officiels arrivent dans la soirée et confirment la liste.' : none;
     } else if (m.ph === 'officiel') {
-      big = n ? 'Ordres du soir : ' + cnt(n) : 'Ce soir : rien à faire';
-      sub = 'Calculés avec les cours de clôture officiels. ' + (n ? 'S\'ils sont passés, rien d\'autre à faire jusqu\'à la prochaine séance (' + longDay(m.next) + ').' : 'Prochaine séance : ' + longDay(m.next) + '.');
+      big = 'Ce soir : ' + lab;
+      sub = (n ? 'Calculés avec les cours de clôture officiels. S\'ils sont passés, rien d\'autre à faire jusqu\'à la prochaine séance (' + longDay(m.next) + ').' : none + ' Prochaine séance : ' + longDay(m.next) + '.');
     } else {
       big = 'Pas de séance aujourd\'hui';
       sub = 'Prochaine séance : ' + longDay(m.next) + ', ordres à passer avant ' + hm(closeUTC(m.next)) + '. Ci-dessous, les ordres du dernier soir (' + longDay(day) + ') : vérifiez qu\'ils ont bien été passés.';
@@ -384,8 +388,13 @@
 
     // ordres
     var head = '<div class="card-head"><h2>' + (m.ph === 'repos' ? 'Ordres du ' + longDay(day) : 'Ordres à passer') + '</h2>' + (n ? '<span class="small">' + nd + ' sur ' + n + ' fait' + (nd > 1 ? 's' : '') + '</span>' : '') + '</div>';
-    var body = n ? '<div class="orders">' + od.list.map(function (o) { return orderCard(run, t, o, dkey); }).join('') + '</div><div class="prog"><i style="width:' + (nd / n * 100).toFixed(0) + '%"></i></div>'
-      : '<div class="empty">' + ico('check') + '<span>Aucun ordre ce soir. Les positions et leurs stops restent en place.</span></div>';
+    var sigs = od.list.filter(function (o) { return o.type !== 'stop'; }), moves = od.list.filter(function (o) { return o.type === 'stop'; });
+    var body = '<h3 class="grp">Signaux' + (ns ? ' · ' + ns : '') + '</h3>' +
+      (ns ? '<div class="orders">' + sigs.map(function (o) { return orderCard(run, t, o, dkey); }).join('') + '</div>'
+        : '<div class="empty">' + ico('check') + '<span><b>Aucun signal ce soir.</b> Aucune position à ouvrir, fermer ou changer.</span></div>') +
+      (nm ? '<h3 class="grp">Stops à déplacer · ' + nm + '</h3><p class="muted" style="margin:0 0 4px">' + (rev ? 'Soir de révision : ' : '') + 'la position reste la même, seul son stop change.</p><div class="orders">' + moves.map(function (o) { return orderCard(run, t, o, dkey); }).join('') + '</div>' : '') +
+      (n ? '<div class="prog"><i style="width:' + (nd / n * 100).toFixed(0) + '%"></i></div>' : '') +
+      '<p class="muted">Les ' + nopen + ' trades en cours qui ne sont pas listés ici restent en place : rien à faire pour eux (détail dans Positions).</p>';
     $('s-orders').innerHTML = head + body;
 
     // informations utiles
@@ -450,23 +459,33 @@
       '<div><span>Exposition</span><b>' + nf(tot.gross / cfg.size, 2) + ' ×</b><small>' + usd(tot.gross) + '</small></div>' +
       '<div><span>Risque aux stops</span><b>' + upct(tot.risk / cfg.size, 2) + '</b><small>' + usd(tot.risk) + ' sur 3 % max</small></div>' +
       '<div><span>Latent (estimé)</span><b class="' + (tot.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(tot.pnl) + '</b><small>depuis l\'entrée</small></div></div>';
-    var tr = rows.map(function (x) {
-      if (x.flat) return '<tr><td class="m"><b>' + x.code + '</b><span>' + esc(MK[x.code].n) + '</span></td><td><span class="side f">Stoppé</span></td><td colspan="6" style="text-align:left;color:var(--ink-3);white-space:normal">' + flatTxt(x) + '</td></tr>';
-      return '<tr><td class="m"><b>' + x.code + '</b><span>' + esc(MK[x.code].n) + '</span></td><td><span class="side ' + (x.v > 0 ? 'l">Achat' : 's">Vente') + '</span></td><td>' + since(x) + '</td><td>' + l2(x.v) + '</td>' +
-        '<td>' + pxf(x.code, x.st.lvl) + '</td><td>' + x.st.unit + '</td><td>' + usd(x.risk) + '</td><td class="' + (x.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.pnl) + '</td></tr>';
-    }).join('');
-    var cards = rows.map(function (x) {
-      if (x.flat) return '<div class="pc"><div class="h"><b>' + x.code + '</b><span class="side f">Stoppé</span></div><div class="small" style="margin-top:6px">' + flatTxt(x) + '</div></div>';
-      return '<div class="pc"><div class="h"><span><b>' + x.code + '</b> <span class="small">' + esc(MK[x.code].n) + '</span></span><span class="side ' + (x.v > 0 ? 'l">Achat ' : 's">Vente ') + l2(x.v) + '</span></div>' +
+    var od = ordersAt(run, t), sig = {}, mvs = {};
+    od.list.forEach(function (o) { if (o.type === 'stop') mvs[o.code] = o; else sig[o.code] = o; });
+    var SIG = { open: ['Nouvelle ce soir', 'l'], add: ['Augmentée ce soir', 'l'], cut: ['Allégée ce soir', 'f'], flip: ['Retournée ce soir', 'l'], close: ['Fermée ce soir', 's'] };
+    var pcard = function (x, tag, tcls) {
+      if (x.flat) return '<div class="pc"><div class="h"><b>' + x.code + ' <span class="small">' + esc(MK[x.code].n) + '</span></b><span class="side f">Stoppée</span></div><div class="small" style="margin-top:6px">' + flatTxt(x) + '</div></div>';
+      return '<div class="pc' + (tag ? ' sig' : '') + '"><div class="h"><span><b>' + x.code + '</b> <span class="small">' + esc(MK[x.code].n) + '</span></span><span class="side ' + (x.v > 0 ? 'l">Achat ' : 's">Vente ') + l2(x.v) + '</span></div>' +
+        (tag ? '<div class="ptag ' + (tcls || '') + '">' + tag + '</div>' : '') +
         '<div class="g"><div><span>Depuis</span><b>' + since(x) + '</b></div><div><span>Stop</span><b>' + pxf(x.code, x.st.lvl) + '</b></div><div><span>Risque</span><b>' + usd(x.risk) + '</b></div><div><span>Latent</span><b class="' + (x.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.pnl) + '</b></div></div></div>';
-    }).join('');
+    };
+    var live = rows.filter(function (x) { return !x.flat; }), sigCards = [], keep = [];
+    live.forEach(function (x) { if (sig[x.code]) sigCards.push(pcard(x, SIG[sig[x.code].type][0], SIG[sig[x.code].type][1])); else keep.push(x); });
+    Object.keys(sig).forEach(function (c) { if (sig[c].type === 'close') sigCards.push('<div class="pc sig"><div class="h"><span><b>' + c + '</b> <span class="small">' + esc(MK[c].n) + '</span></span><span class="side s">À fermer</span></div><div class="ptag s">Fermée ce soir</div><div class="small" style="margin-top:6px">' + (sig[c].from > 0 ? 'Position acheteuse' : 'Position vendeuse') + ' de ' + l2(sig[c].from) + ' lot à fermer (croix dans MT5).</div></div>'); });
+    var flats = rows.filter(function (x) { return x.flat; });
+    var ph = S.mom ? S.mom.ph : 'officiel', soirTxt = ph === 'repos' ? 'du ' + longDay(day) : ph === 'jour' ? 'de ce soir (aperçu)' : 'de ce soir', soirShort = ph === 'repos' ? 'le ' + longDay(day) : ph === 'jour' ? 'ce soir (aperçu)' : 'ce soir';
     var smallHtml = small.length ? '<div class="smallpos"><b>' + small.length + ' position' + (small.length > 1 ? 's' : '') + ' trop petite' + (small.length > 1 ? 's' : '') + ' pour un compte de ' + nf(cfg.size) + ' $</b> (moins d\'un demi-pas de ' + nf(cfg.step, 2) + ' lot), à ne pas prendre : ' +
       small.map(function (x) { return x.code + ' ' + (x.h > 0 ? 'achat' : 'vente') + ' ' + upct(Math.abs(x.h), 1) + ' du compte'; }).join(', ') + '.</div>' : '';
-    $('p-list').innerHTML = '<div class="card-head"><h2>Positions à tenir sur MT5</h2><span class="small">' + rows.filter(function (x) { return !x.flat; }).length + ' sur 18 marchés</span></div>' +
-      '<p class="muted" style="margin-top:0">Ce sont les positions que votre compte doit avoir en ce moment, avec leur stop : les mêmes que les trades « En cours » de l\'onglet Trades. Au démarrage d\'un compte, ouvrez-les toutes ; ensuite, les ordres du soir les tiennent à jour.</p>' +
-      (rows.length ? '<div class="ptable-wrap scroll"><table class="ptable"><thead><tr><th>Marché</th><th>Sens</th><th>Depuis</th><th>Lots</th><th>Stop</th><th>Distance</th><th>Risque</th><th>Latent</th></tr></thead><tbody>' + tr + '</tbody></table></div><div class="pcards">' + cards + '</div>'
-      : '<div class="empty">' + ico('flat') + 'Aucune position à tenir' + (small.length ? ' : toutes sont trop petites pour ce compte.' : '.') + '</div>') + smallHtml +
-      '<p class="muted">Latent : estimation depuis le prix d\'entrée du moteur ; votre MT5 fait foi.</p>';
+    var nsig = Object.keys(sig).length, nmv = Object.keys(mvs).length;
+    $('p-list').innerHTML =
+      '<div class="sigban ' + (nsig ? 'on' : 'off') + '"><span class="i">' + ico(nsig ? 'alert' : 'check') + '</span><div><b>' + (nsig ? nsig + (nsig > 1 ? ' signaux' : ' signal') + ' ' + soirShort : 'Aucun signal ' + soirShort) + '</b>' +
+      '<small>' + (nsig ? 'Positions à ouvrir, fermer ou changer : à passer depuis l\'onglet Ce soir.' : 'Aucune position à ouvrir, fermer ou changer.') + (nmv ? ' ' + nmv + ' stop' + (nmv > 1 ? 's' : '') + ' à déplacer.' : '') + ' Les autres trades restent en place.</small></div>' +
+      (nsig || nmv ? '<button class="go" data-go="soir">Voir les ordres</button>' : '') + '</div>' +
+      '<h3 class="grp">Signaux ' + soirTxt + (nsig ? ' · ' + nsig : '') + '</h3>' +
+      (sigCards.length ? '<div class="pcards">' + sigCards.join('') + '</div>' : '<div class="empty slim">' + ico('check') + '<span>Aucun signal : rien à ouvrir, fermer ou changer.</span></div>') +
+      '<h3 class="grp">Trades en cours · ' + keep.length + '</h3><p class="muted" style="margin:0 0 6px">À garder tels quels sur MT5' + (nmv ? ' (seul le stop de ceux marqués change ce soir)' : '') + '. Au démarrage d\'un compte, ouvrez-les tous avec leur stop.</p>' +
+      (keep.length ? '<div class="pcards">' + keep.map(function (x) { return pcard(x, mvs[x.code] ? 'Stop à déplacer ce soir' : '', 'm'); }).join('') + '</div>' : '<div class="empty slim">' + ico('flat') + '<span>Aucun trade en cours.</span></div>') +
+      (flats.length ? '<h3 class="grp">Fermées par un stop · ' + flats.length + '</h3><div class="pcards">' + flats.map(function (x) { return pcard(x); }).join('') + '</div>' : '') +
+      smallHtml + '<p class="muted">Latent : estimation depuis le prix d\'entrée du moteur ; votre MT5 fait foi.</p>';
     var mx = Math.max(0.01, fam.idx[0] + fam.idx[1], fam.fx[0] + fam.fx[1], fam.met[0] + fam.met[1]);
     $('p-fam').innerHTML = '<h2>Exposition par famille</h2><div class="fam">' + ['idx', 'fx', 'met'].map(function (f) {
       var a = fam[f][0] / mx * 100, b = fam[f][1] / mx * 100;
