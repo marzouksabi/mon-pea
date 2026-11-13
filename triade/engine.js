@@ -232,11 +232,12 @@
     var Cbud = new Float64Array(T), TURN = new Float64Array(T), override = opts.override || {};
     var band = !!opts.band, cost = opts.cost || 0, cap = opts.cap || 0, scl = new Float64Array(NI).fill(1), RESET = [];
     var fromEntry = opts.riskFrom === 'entry', entry = new Float64Array(NI).fill(NaN), ENTRY = [], RISK = new Float64Array(T);
+    var posCap = opts.posCap || 0, reopen = !!opts.reopenOnAdd, pcs = new Float64Array(NI).fill(1);   // posCap : risque max d'une position ; reopen : agrandir = fermer puis rouvrir
     for (j = 0; j < NI; j++) { RESET.push(new Uint8Array(T)); ENTRY.push(new Float64Array(T).fill(NaN)); }
     function newEntry(h0, e0, h1, px) {          // prix moyen d'entrée de la position réelle après passage de h0 à h1
       if (!h1) return NaN;
       if (!h0 || sign(h0) !== sign(h1) || e0 !== e0) return px;
-      if (Math.abs(h1) > Math.abs(h0)) return (Math.abs(h0) * e0 + (Math.abs(h1) - Math.abs(h0)) * px) / Math.abs(h1);
+      if (Math.abs(h1) > Math.abs(h0)) return reopen ? px : (Math.abs(h0) * e0 + (Math.abs(h1) - Math.abs(h0)) * px) / Math.abs(h1);
       return e0;
     }
     function riskOf(h, e, rf, d) {               // perte si le stop est touché, mesurée depuis le prix d'entrée (en fraction du compte)
@@ -272,14 +273,14 @@
       for (j = 0; j < NI; j++) tot += Math.abs(P[j][t]) * SIG20[j][t];
       var cc = tot > 0 ? budget / tot : 0;
       Cbud[t] = cc;
-      var turn = 0, before = held.slice(), resetJ = [], Rnr = 0, Rr = 0;
+      var turn = 0, before = held.slice(), entryPrev = entry.slice(), resetJ = [], Rnr = 0, Rr = 0;
       for (j = 0; j < NI; j++) {
         var tg = P[j][t];
         if (tg === 0) { held[j] = 0; ref[j] = NaN; stopped[j] = 0; HELD[j][t] = 0; continue; }
         var reset = ref[j] !== ref[j] || sign(tg) !== sign(last[j]) || Math.abs(tg - last[j]) > 0.1 * Math.abs(last[j]) || (g0 + t) % 5 === 0;
         if (stopped[j] && !reset) { held[j] = 0; STOPPED[j][t] = 1; REF[j][t] = ref[j]; DIST[j][t] = dist[j]; continue; }
         if (reset) { resetJ.push(j); Rr += Math.abs(tg) * Math.max(cc * SIG20[j][t], 1e-4); continue; }
-        held[j] = band ? last[j] * scl[j] : tg * scl[j]; HELD[j][t] = held[j]; REF[j][t] = ref[j]; DIST[j][t] = dist[j];
+        held[j] = (band ? last[j] * scl[j] : tg * scl[j]) * pcs[j]; HELD[j][t] = held[j]; REF[j][t] = ref[j]; DIST[j][t] = dist[j];
         if (fromEntry) { entry[j] = newEntry(before[j], entry[j], held[j], C[j][t]); Rnr += riskOf(held[j], entry[j], ref[j], dist[j]); }
         else Rnr += Math.abs(held[j]) * dist[j];
       }
@@ -307,8 +308,9 @@
       for (k = 0; k < resetJ.length; k++) {
         j = resetJ[k];
         ref[j] = C[j][t]; dist[j] = ndist[j]; stopped[j] = 0; last[j] = P[j][t]; scl[j] = sc; RESET[j][t] = 1;
-        held[j] = P[j][t] * sc; HELD[j][t] = held[j]; REF[j][t] = ref[j]; DIST[j][t] = dist[j];
-        entry[j] = newEntry(before[j], entry[j], held[j], C[j][t]);
+        held[j] = P[j][t] * sc; entry[j] = newEntry(before[j], entry[j], held[j], C[j][t]); pcs[j] = 1;
+        if (posCap) { var r1 = riskOf(held[j], entry[j], ref[j], dist[j]); if (r1 > posCap) { pcs[j] = posCap / r1; held[j] *= pcs[j]; entry[j] = newEntry(before[j], before[j] ? entryPrev[j] : NaN, held[j], C[j][t]); } }
+        HELD[j][t] = held[j]; REF[j][t] = ref[j]; DIST[j][t] = dist[j];
       }
       var rk = 0;
       for (j = 0; j < NI; j++) {
@@ -317,7 +319,7 @@
         rk += held[j] ? (fromEntry ? riskOf(held[j], entry[j], ref[j], dist[j]) : Math.abs(held[j]) * dist[j]) : 0;
       }
       RISK[t] = rk;
-      for (j = 0; j < NI; j++) turn += Math.abs(held[j] - before[j]);
+      for (j = 0; j < NI; j++) turn += Math.abs(held[j] - before[j]) + (reopen && before[j] && sign(held[j]) === sign(before[j]) && Math.abs(held[j]) > Math.abs(before[j]) ? 2 * Math.abs(before[j]) : 0);
       TURN[t] = turn; R[t] -= cost * turn; RL[t] -= cost * turn;
     }
     return {
