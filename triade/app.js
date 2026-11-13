@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 12/11 22:19';
+  var VERSION = 'version du 13/11 12:01';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -394,7 +394,8 @@
         : '<div class="empty">' + ico('check') + '<span><b>Aucun signal ce soir.</b> Aucune position à ouvrir, fermer ou changer.</span></div>') +
       (nm ? '<h3 class="grp">Stops à déplacer · ' + nm + '</h3><p class="muted" style="margin:0 0 4px">' + (rev ? 'Soir de révision : ' : '') + 'la position reste la même, seul son stop change.</p><div class="orders">' + moves.map(function (o) { return orderCard(run, t, o, dkey); }).join('') + '</div>' : '') +
       (n ? '<div class="prog"><i style="width:' + (nd / n * 100).toFixed(0) + '%"></i></div>' : '') +
-      '<p class="muted">Les ' + nopen + ' trades en cours qui ne sont pas listés ici restent en place : rien à faire pour eux (détail dans Positions).</p>';
+      (function () { var L0 = lotsAt(run, t), listed = {}, k = 0; od.list.forEach(function (o) { listed[o.code] = 1; }); L0.forEach(function (v, j) { if (v && !listed[CODES[j]]) k++; });
+        return '<p class="muted">' + (k ? (k > 1 ? 'Les ' + k + ' autres trades en cours restent' : 'L’autre trade en cours reste') + ' en place : rien à faire pour ' + (k > 1 ? 'eux' : 'lui') + ' (détail dans Positions).' : 'Toutes vos positions sont concernées ce soir.') + '</p>'; })();
     $('s-orders').innerHTML = head + body;
 
     // informations utiles
