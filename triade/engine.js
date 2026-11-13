@@ -117,6 +117,25 @@
       }
       if (opts.signals) opts.signals[col] = { rsi: rsi, sma5: sma5, sma200: sma200, s20: s, ref: ref };
     });
+    // ---- option rotation (labo M2) : remplace le repli comme 1er moteur. Fin de chaque mois, les `top` marchés au meilleur
+    // rendement de `look` séances sans les `skip` dernières, parmi ceux au score positif, chacun dosé par sa volatilité de 60 séances
+    if (opts.rot) {
+      var RO = opts.rot, RU = RO.codes.map(function (c) { return CODES.indexOf(c); }).filter(function (j) { return j >= 0; });
+      var FR = CODES.map(function (c) { return D.m[c].f || 0; }), curR = new Float64Array(NI), look = RO.look || 252, skp = RO.skip || 21, top = RO.top || 3;
+      HR = []; for (j = 0; j < NI; j++) HR.push(new Float64Array(T));
+      for (t = 0; t < T; t++) {
+        var dNow = t < T0 ? D.days[t] : D.days[T0 - 1] + (t - T0 + 1), dNext = t + 1 < T0 ? D.days[t + 1] : dNow + 1;
+        var mEnd = t < T - 1 && new Date(dNow * 86400000).getUTCMonth() !== new Date(dNext * 86400000).getUTCMonth();
+        if (mEnd && t > look) {
+          var sc = [];
+          RU.forEach(function (jj) { if (t - FR[jj] > Math.max(look, 252)) sc.push([C[jj][t - skp] / C[jj][t - look] - 1, jj]); });
+          sc = sc.filter(function (x) { return x[0] > 0; }).sort(function (x, y) { return y[0] - x[0]; }).slice(0, top);
+          curR = new Float64Array(NI);
+          sc.forEach(function (x) { var v = std(RET[x[1]], t - 59, t + 1) * Math.sqrt(252); curR[x[1]] = 0.10 / Math.max(v, 0.02); });
+        }
+        for (j = 0; j < NI; j++) HR[j][t] = curR[j];
+      }
+    }
     // ---- 3) V1 : indices dosés au-dessus de la moyenne de 200 séances
     var HV = [];
     for (j = 0; j < NI; j++) HV.push(new Float64Array(T));
