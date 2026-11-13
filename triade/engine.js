@@ -7,9 +7,10 @@
   'use strict';
   var CODES = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD', 'XAUUSD', 'XAGUSD',
     'SPX500', 'NDX100', 'US30', 'GER30', 'UK100', 'FRA40', 'AUS200', 'HK50', 'JP225'];      // ordre du labo
-  var NI = CODES.length, SPX = CODES.indexOf('SPX500'), NDX = CODES.indexOf('NDX100');
+  var ROOT_CODES = CODES;
 
-  function decode(files) {
+  function decode(files, codes) {                                   // codes : liste des marchés (par défaut les 18 de Triade)
+    var CODES = codes || ROOT_CODES;
     /* fichiers triade-histo.json + triade.json -> séries de prix ; renvoie aussi le rang de chaque séance dans le calendrier du labo */
     var days = [], g0 = null, M = {};
     CODES.forEach(function (c) { M[c] = { o: [], h: [], l: [], c: [], n: '', k: 0 }; });
@@ -28,7 +29,7 @@
         }
       });
     });
-    return { days: days, g0: g0 || 0, m: M };
+    return { days: days, g0: g0 || 0, m: M, codes: CODES };
   }
 
   function std(a, i0, i1) {        // écart type (ddof = 1) de a[i0..i1-1]
@@ -50,6 +51,9 @@
      {CODE: {o, h, l, c}}), stops (true : variante B ; false : sans stop). Les tableaux renvoyés vont de 0 à T-1. */
   function run(D, opts) {
     opts = opts || {};
+    var CODES = D.codes || ROOT_CODES, NI = CODES.length;            // univers du fichier ; repli et V1 sur les marchés choisis
+    var RP = (opts.repliOn || ['SPX500', 'NDX100']).map(function (c) { return CODES.indexOf(c); }).filter(function (j) { return j >= 0; });
+    var VP = (opts.v1On || ['SPX500', 'NDX100']).map(function (c) { return CODES.indexOf(c); }).filter(function (j) { return j >= 0; });
     var target = opts.target || 0.06, budget = opts.budget || 0.03, useStops = opts.stops !== false;
     // extra : séances ajoutées après les cours officiels (cours du moment ; null = séance sans nouveau cours, reprise de la veille)
     var EX = opts.extra ? (Array.isArray(opts.extra) ? opts.extra : [opts.extra]) : [];
@@ -75,7 +79,7 @@
     // ---- 1) repli dosé : trades sur S&P 500 et Nasdaq-100, taille 0,75 x volatilité de référence / volatilité du moment
     var HR = [], trades = [];
     for (j = 0; j < NI; j++) HR.push(new Float64Array(T));
-    [SPX, NDX].forEach(function (col) {
+    RP.forEach(function (col) {
       var c = C[col], n = T, lr = new Float64Array(n), s = new Float64Array(n).fill(NaN), ref = new Float64Array(n).fill(NaN);
       var sma200 = new Float64Array(n).fill(Infinity), sma5 = new Float64Array(n), rsi = new Float64Array(n), au = 0, ad = 0, i, q;
       for (i = 1; i < n; i++) lr[i] = Math.log(c[i] / c[i - 1]);
@@ -116,7 +120,7 @@
     // ---- 3) V1 : indices dosés au-dessus de la moyenne de 200 séances
     var HV = [];
     for (j = 0; j < NI; j++) HV.push(new Float64Array(T));
-    [SPX, NDX].forEach(function (col) {
+    VP.forEach(function (col) {
       var c = C[col], lr = new Float64Array(T);
       for (t = 1; t < T; t++) lr[t] = c[t - 1] > 0 ? Math.log(c[t] / c[t - 1]) : 0;
       for (t = 220; t < T; t++) {
