@@ -31,7 +31,9 @@
     cross: '<path d="m6.5 6.5 11 11M17.5 6.5l-11 11"/>',
     alert: '<path d="M12 6.5v7"/><path d="M12 17.3v.2"/>',
     info: '<path d="M12 10.5v7"/><path d="M12 6.8v.2"/>',
-    cash: '<path d="M15.5 8.5c-.6-1.2-1.9-2-3.5-2-2 0-3.5 1.1-3.5 2.6 0 3.5 7 1.9 7 5.4 0 1.5-1.5 2.6-3.5 2.6-1.6 0-3-.8-3.6-2"/><path d="M12 4.5v2M12 17.1v2.4"/>'
+    cash: '<path d="M15.5 8.5c-.6-1.2-1.9-2-3.5-2-2 0-3.5 1.1-3.5 2.6 0 3.5 7 1.9 7 5.4 0 1.5-1.5 2.6-3.5 2.6-1.6 0-3-.8-3.6-2"/><path d="M12 4.5v2M12 17.1v2.4"/>',
+    cart: '<path d="M3.5 4.5h2l2.2 10.2a1.5 1.5 0 0 0 1.5 1.2h7.6a1.5 1.5 0 0 0 1.5-1.1l1.5-6.3H6.4"/><circle cx="9.5" cy="19.5" r="1.2"/><circle cx="16.5" cy="19.5" r="1.2"/>',
+    flame: '<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.4-5.4 3.6-8.3.4 1.9 1.4 3 2.6 3.6-.1-2.7.9-5.2 3.1-7.1-.2 3.1 4.7 5.5 4.7 11.8 0 3.6-3 6.2-7.5 6.2z"/>'
   };
   var ico = function (n, cls) { return '<svg class="ico' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[n] || '') + '</svg>'; };
   var store = {
@@ -78,7 +80,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date(nowMs()))); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 12/11 12:36';
+  var VERSION = 'version du 13/11 12:11';
   var DEF = { size: 50000, lev: 0.5, dose: true, phase: 1, start: '', bal: '', ct: { spx: 10, ndx: 10 }, step: 0.01 };   // dose : taille dosee par la volatilite (base 0,75 x)   // FundedNext : 1 lot d'indice = 10 fois l'indice
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -891,7 +893,8 @@
   var FEES = { 6000: 59.99, 15000: 119.99, 25000: 199.99, 50000: 299.99, 100000: 549.99, 200000: 1099.99 };
 
   /* jambes de trades : rendements quotidiens (cloture et plus bas), avec ou sans stop */
-  function legs(withStop) {                                          // withStop : stop de la regle des 3 % (compte finance)
+  function legs(withStop, fin) {                                     // withStop : stop de la regle des 3 % (compte finance) ; fin : frais de nuit par jour (FIN par defaut, 0 avec Swap-Free)
+    var FN = fin === undefined ? FIN : fin;
     var out = [];
     ['spx', 'ndx'].forEach(function (k) {
       var I = IDX[k], c = I.c, l = I.l, d = I.days, st = A[k].st;
@@ -899,7 +902,7 @@
       all.forEach(function (t) {
         var i = t[0], j = t[1], lev = levAt(k, i), sp = withStop ? c[i] * (1 - stopFor(lev)) : null, days = [], exitIdx = j, stopped = false;
         for (var q = i + 1; q <= j; q++) {
-          var f = FIN * (d[q] - d[q - 1]) + (q === i + 1 ? COST : 0);
+          var f = FN * (d[q] - d[q - 1]) + (q === i + 1 ? COST : 0);
           if (sp && l[q] <= sp) { var rr = sp / c[q - 1] - 1 - f; days.push({ d: d[q], r: rr, rl: rr }); exitIdx = q; stopped = true; break; }
           days.push({ d: d[q], r: c[q] / c[q - 1] - 1 - f, rl: Math.min(l[q], c[q]) / c[q - 1] - 1 - f });
         }
@@ -945,6 +948,208 @@
       curve.push([d, paid - fees + (a.bal - size)]);
     });
     return { fees: fees, paid: paid, blown: blown, a: a, ev: ev, curve: curve, fee: fee };
+  }
+
+  /* ---------- onglet Simuler : un compte Stellar 2-Step choisi (taille, date d'achat, fin, rythme des retraits) ---------- */
+  var SM = null, smMax = 30, SM_EVERY = { 14: 'tous les 14 jours (1er après 21 jours)', 30: 'tous les mois', 0: 'aucun retrait avant la fin' };
+  var fullDayR = function (d) { var x = new Date(d * DAY); return x.getUTCDate() + ' ' + MOIS[x.getUTCMonth()] + ' ' + x.getUTCFullYear(); };
+  /* Même règles que simAccount (Bilan), avec en plus : rythme des retraits, frais de nuit (0 avec Swap-Free), suivi jour par jour */
+  function simTwo(o) {
+    var size = o.size, fee = o.fee, Ln = legs(false, o.fin), Ls = legs(true, o.fin), Bns = byDay(Ln), Bs = byDay(Ls);
+    var days = IDX.spx.days.concat(IDX.ndx.days).filter(function (d) { return d > o.s0 && d <= o.e0; });
+    days = days.filter(function (d, i) { return days.indexOf(d) === i; }).sort(function (a, b) { return a - b; });
+    var first = o.every === 0 ? Infinity : Math.max(21, o.every), next = o.every || Infinity;
+    var fresh = function (since, n) { return { ph: 1, bal: size, real: size, since: since, due: null, ref: false, n: n, open: {}, nd: 0, start: since }; };
+    var ev = [{ d: o.s0, type: 'achat', v: -fee, n: 1 }], fees = fee, paid = 0, blown = 0, a = fresh(o.s0 + 1, 1), bal = [], ph = [], cash = [], worstDay = 0, worstD = null;
+    days.forEach(function (d) {
+      var B = a.ph < 3 ? Bns : Bs, mine = (B[d] || []).filter(function (x) { return x.e >= a.since; });
+      var pnl = 0, worst = 0; mine.forEach(function (x) { pnl += size * x.lev * x.r; worst += size * x.lev * x.rl; });
+      a.nd++;
+      if (Math.min(worst, pnl) < worstDay) { worstDay = Math.min(worst, pnl); worstD = d; }
+      if (worst <= -0.05 * size || a.bal + worst <= 0.9 * size || pnl <= -0.05 * size) {
+        blown++; ev.push({ d: d, type: 'crame', ph: a.ph, why: (worst <= -0.05 * size || pnl <= -0.05 * size) ? 'jour' : 'max', loss: Math.min(worst, pnl) });
+        a = fresh(d, a.n + 1); fees += fee; ev.push({ d: d, type: 'achat', v: -fee, n: a.n });
+      } else {
+        a.bal += pnl;
+        mine.forEach(function (x) { a.open[x.id] = (a.open[x.id] || 0) + size * x.lev * x.r; if (x.end) { a.real += a.open[x.id]; delete a.open[x.id]; } });
+        if (a.ph === 1 && a.real >= size * 1.08 && a.nd >= 5) { ev.push({ d: d, type: 'p1', days: a.nd }); a = Object.assign(fresh(d, a.n), { ph: 2 }); }
+        else if (a.ph === 2 && a.real >= size * 1.05 && a.nd >= 5) { ev.push({ d: d, type: 'p2', days: a.nd }); a = Object.assign(fresh(d, a.n), { ph: 3, due: d + first }); }
+        else if (a.ph === 3 && d >= a.due) {
+          a.due = d + next;
+          if (a.real > size) {
+            var g = a.real - size, amt = 0.8 * g + (a.ref ? 0 : fee); paid += amt;
+            ev.push({ d: d, type: 'paiement', v: amt, gross: g, refund: !a.ref }); a.ref = true; a.real = size; a.bal -= g;
+          }
+        }
+      }
+      bal.push(a.bal); ph.push(a.ph); cash.push(paid - fees);
+    });
+    var rest = a.ph === 3 && a.bal > size ? 0.8 * (a.bal - size) + (a.ref ? 0 : fee) : 0;
+    return { fees: fees, paid: paid, blown: blown, a: a, ev: ev, days: days, bal: bal, ph: ph, cash: cash, rest: rest, Ln: Ln, Ls: Ls, worstDay: worstDay, worstD: worstD };
+  }
+  function smSetup() {
+    if (SM) return;
+    var D = IDX.spx.days, n = D.length, minD = D[Math.min(n - 1, 260)];
+    SM = store.get('simu', null) || { size: +cfg.size || 50000, swap: true, start: ds(Math.max(minD, dn('2020-01-02'))), end: '', every: 14 };
+    if (!FEES[SM.size]) SM.size = 50000;
+    $('sm-size').innerHTML = Object.keys(FEES).map(function (k) { return '<option value="' + k + '">' + nf(+k) + ' $ (' + usd(FEES[k], 2) + ')</option>'; }).join('');
+    ['sm-start', 'sm-end'].forEach(function (id) { $(id).min = ds(minD); $(id).max = ds(D[n - 1]); });
+    $('sm-presets').innerHTML = '<span>Acheté il y a</span>' + [1, 2, 3, 5].map(function (y) { return '<button type="button" data-smago="' + y + '">' + y + ' an' + (y > 1 ? 's' : '') + '</button>'; }).join('') +
+      '<button type="button" data-smago="2020">janv. 2020</button><button type="button" data-smago="2022">janv. 2022</button><button type="button" data-smago="2023">janv. 2023</button>';
+    ['sm-size', 'sm-start', 'sm-end', 'sm-every', 'sm-swap'].forEach(function (id) {
+      $(id).addEventListener('change', function () {
+        SM.size = +$('sm-size').value; SM.start = $('sm-start').value || SM.start; SM.end = $('sm-end').value; SM.every = +$('sm-every').value; SM.swap = $('sm-swap').checked;
+        store.set('simu', SM); smMax = 30; renderSimu();
+      });
+    });
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-smago]'), m = e.target.closest('[data-smmore]');
+      if (b) {
+        var v = +b.dataset.smago, last = new Date(D[n - 1] * DAY);
+        SM.start = v > 1000 ? v + '-01-02' : (last.getUTCFullYear() - v) + '-' + String(last.getUTCMonth() + 1).padStart(2, '0') + '-' + String(last.getUTCDate()).padStart(2, '0');
+        if (dn(SM.start) < minD) SM.start = ds(minD);
+        SM.end = ''; store.set('simu', SM); smMax = 30; renderSimu();
+      } else if (m) { smMax += 30; renderSimu(); }
+    });
+  }
+  function renderSimu() {
+    if (!A.spx) return;
+    smSetup();
+    var D = IDX.spx.days, n = D.length, M = SM;
+    $('sm-size').value = String(M.size); $('sm-start').value = M.start; $('sm-end').value = M.end || ds(D[n - 1]); $('sm-every').value = String(M.every); $('sm-swap').checked = !!M.swap;
+    var s0 = dn(M.start) - 1, e0 = M.end ? dn(M.end) : D[n - 1], size = M.size, fee = Math.round(FEES[size] * (M.swap ? 1.1 : 1) * 100) / 100;
+    if (e0 - s0 < 10) { $('sm-hero').innerHTML = '<div class="big">Période trop courte</div><p>Choisis une fin au moins deux semaines après l\'achat.</p>'; ['sm-curve', 'sm-cash', 'sm-stats', 'sm-years', 'sm-journey', 'sm-trades'].forEach(function (id) { $(id).innerHTML = ''; }); return; }
+    var sim = simTwo({ size: size, fee: fee, s0: s0, e0: e0, every: M.every, fin: M.swap ? 0 : FIN }), ev = sim.ev, never = M.every === 0;
+    var fin = sim.paid - sim.fees + (never ? sim.rest : 0), acc = sim.a, len = sim.days.length, months = len / 21;
+    var buys = ev.filter(function (e) { return e.type === 'achat'; }), pays = ev.filter(function (e) { return e.type === 'paiement'; });
+    var p1 = ev.filter(function (e) { return e.type === 'p1'; }), p2 = ev.filter(function (e) { return e.type === 'p2'; }), burns = ev.filter(function (e) { return e.type === 'crame'; });
+    var be = -1; for (var q = 0; q < sim.cash.length; q++) if (sim.cash[q] >= 0) { be = q; break; }
+    var phTxt = { 1: 'phase 1 (objectif +8 %)', 2: 'phase 2 (objectif +5 %)', 3: 'compte financé' };
+    $('sm-hero').innerHTML = '<h3>Stellar 2-Step ' + nf(size) + ' $ acheté le ' + fullDayR(s0 + 1) + ', jusqu\'au ' + fullDayR(e0) + '</h3>' +
+      '<div class="sm-count">' + sUsd(fin) + '</div><p class="sm-sub">' + (never ? 'net si tout est retiré le ' + fullDayR(e0) : 'net : paiements reçus − comptes payés') + '</p>' +
+      '<p>' + buys.length + ' compte' + (buys.length > 1 ? 's' : '') + ' acheté' + (buys.length > 1 ? 's' : '') + ' à ' + usd(fee, 2) + ' (' + usd(sim.fees) + ') : ' + p1.length + ' phase 1 réussie' + (p1.length > 1 ? 's' : '') + ', ' + p2.length + ' compte' + (p2.length > 1 ? 's' : '') + ' financé' + (p2.length > 1 ? 's' : '') + ', ' + burns.length + ' cramé' + (burns.length > 1 ? 's' : '') + '. ' +
+      (never ? '' : pays.length + ' paiement' + (pays.length > 1 ? 's' : '') + ' (' + SM_EVERY[M.every] + ') pour ' + usd(sim.paid) + ' reçus. ') + 'À la fin : ' + phTxt[acc.ph] + ', solde ' + usd(acc.bal) + '.' + (!never && sim.rest > 0 ? ' Encore ' + usd(sim.rest) + ' à retirer.' : '') + '</p>' +
+      '<div class="sm-kpis"><div><span>Durée</span><b>' + (months >= 24 ? nf(months / 12, 1) + ' ans' : nf(months, 0) + ' mois') + '</b></div><div><span>Rentabilisé</span><b>' + (be >= 0 ? shortDay(sim.days[be]) + ' ' + new Date(sim.days[be] * DAY).getUTCFullYear() : 'pas encore') + '</b></div>' +
+      '<div><span>Par mois</span><b>' + sUsd(fin / Math.max(1, months)) + '</b></div><div><span>Premier paiement</span><b>' + (pays.length ? shortDay(pays[0].d) + ' ' + new Date(pays[0].d * DAY).getUTCFullYear() : '—') + '</b></div></div>';
+
+    $('sm-curve').innerHTML = '<div class="sm-head"><h2>Solde du compte</h2><span class="muted">un compte cramé repart de ' + nf(size) + ' $</span></div><div class="chart" id="sm-chart"></div>' +
+      '<div class="legend"><span><i class="sm-sq" style="background:var(--accent-soft)"></i>phase 1</span><span><i class="sm-sq" style="background:var(--warn-soft)"></i>phase 2</span><span><i style="background:var(--accent)"></i>solde</span><span><i style="background:var(--good)"></i>objectif</span><span><i style="background:var(--crit)"></i>perte max 10 %</span>' +
+      '<span><i class="sm-dot" style="background:var(--good)"></i>paiement</span><span><i class="sm-dot" style="background:var(--crit)"></i>cramé</span></div>';
+    smChart($('sm-chart'), sim, size);
+
+    var c = sim.cash.slice(); if (never && c.length) c[c.length - 1] += sim.rest;
+    $('sm-cash').innerHTML = '<div class="sm-head"><h2>Ce que le compte t\'a rapporté</h2><span class="muted">paiements − comptes payés</span></div><div class="chart" id="sm-cashc"></div>' +
+      '<p class="muted">' + (be >= 0 ? 'Les achats sont remboursés à partir du ' + fullDayR(sim.days[be]) + ' (' + nf((be + 1) / 21, 0) + ' mois après l\'achat).' : 'Les paiements n\'ont pas encore remboursé les comptes achetés.') + '</p>';
+    smLine($('sm-cashc'), sim.days, c);
+
+    // trades de la période : sans stop pendant les phases, avec le stop de la règle des 3 % sur le compte financé
+    var phAt = {}; sim.days.forEach(function (d, k) { phAt[d] = sim.ph[k]; });
+    var accAt = function (d) { var p = phAt[d]; return p; };
+    var L = [];
+    sim.Ln.forEach(function (t) { if (t.e > s0 && t.e <= e0 && accAt(t.e) < 3) L.push({ t: t, f: false }); });
+    sim.Ls.forEach(function (t) { if (t.e > s0 && t.e <= e0 && accAt(t.e) === 3) L.push({ t: t, f: true }); });
+    L.sort(function (a, b) { return b.t.e - a.t.e; });
+    var win = L.filter(function (o) { return !o.t.open && o.t.net > 0; }).length, closed = L.filter(function (o) { return !o.t.open; }).length, tot = L.reduce(function (s, o) { return s + size * o.t.lev * o.t.net; }, 0);
+    var durs = function (a, b) { var r = []; b.forEach(function (x) { var s = ev.filter(function (y) { return a.indexOf(y.type) >= 0 && y.d <= x.d; }).pop(); if (s) r.push(x.d - s.d); }); return r; };
+    var mean = function (a) { return a.length ? a.reduce(function (s, x) { return s + x; }, 0) / a.length : 0; };
+    var d1 = durs(['achat'], p1), d2 = durs(['p1'], p2), fd = sim.ph.filter(function (p) { return p === 3; }).length;
+    var avgPay = pays.length ? sim.paid / pays.length : 0, maxPay = pays.reduce(function (s, e) { return Math.max(s, e.v); }, 0);
+    $('sm-stats').innerHTML = '<h2>Statistiques</h2><div class="sm-stat">' +
+      '<div><span>Comptes financés</span><b>' + p2.length + ' / ' + buys.length + '</b><small>sur comptes achetés</small></div>' +
+      '<div><span>Durée des phases</span><b>' + (d1.length ? nf(mean(d1) / 30.4, 1) : '—') + ' + ' + (d2.length ? nf(mean(d2) / 30.4, 1) : '—') + ' mois</b><small>phase 1 + phase 2, en moyenne</small></div>' +
+      '<div><span>Temps sur compte financé</span><b>' + nf(fd / 21, 0) + ' mois</b><small>sur ' + nf(months, 0) + '</small></div>' +
+      '<div><span>Paiements</span><b>' + pays.length + '</b><small>' + (pays.length ? 'moyen ' + usd(avgPay) + ', plus gros ' + usd(maxPay) : 'aucun') + '</small></div>' +
+      '<div><span>Trades</span><b>' + L.length + '</b><small>' + (closed ? Math.round(win / closed * 100) : 0) + ' % gagnants · ' + sUsd(tot) + '</small></div>' +
+      '<div><span>Pire journée</span><b class="neg">' + usd(sim.worstDay) + '</b><small>' + (sim.worstD ? fullDayR(sim.worstD) : '') + '</small></div></div>';
+
+    var Y = {};
+    var yOf = function (d) { return new Date(d * DAY).getUTCFullYear(); };
+    L.forEach(function (o) { var y = yOf(o.t.x); Y[y] = Y[y] || { pnl: 0, pay: 0, buy: 0 }; Y[y].pnl += size * o.t.lev * o.t.net; });
+    ev.forEach(function (e) { var y = yOf(Math.max(e.d, s0 + 1)); Y[y] = Y[y] || { pnl: 0, pay: 0, buy: 0 }; if (e.type === 'paiement') Y[y].pay += e.v; if (e.type === 'achat') Y[y].buy -= e.v; });
+    $('sm-years').innerHTML = '<h2>Année par année</h2><div class="sm-scroll"><table class="sm-table"><thead><tr><th>Année</th><th>Trades</th><th>Paiements</th><th>Comptes</th><th>Net</th></tr></thead><tbody>' +
+      Object.keys(Y).sort().reverse().map(function (y) { var o = Y[y], net = o.pay - o.buy; return '<tr><td>' + y + '</td><td class="' + (o.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(o.pnl) + '</td><td>' + usd(o.pay) + '</td><td>' + (o.buy ? '−' + usd(o.buy) : '0 $') + '</td><td class="' + (net >= 0 ? 'pos' : 'neg') + '">' + sUsd(net) + '</td></tr>'; }).join('') +
+      '</tbody></table></div><p class="muted">Trades : résultat des trades fermés dans l\'année (phases et compte financé). Les gains des phases ne se retirent pas ; ceux du compte financé se retirent à 80 %.</p>';
+
+    var rev = ev.slice().reverse(), row = function (e) {
+      var d = Math.max(e.d, s0 + 1);
+      if (e.type === 'paiement') return '<div class="sm-e pay"><span class="i">' + ico('cash') + '</span><span>Paiement<small>' + fullDayR(d) + ' · 80 % de ' + usd(e.gross) + (e.refund ? ' + compte remboursé' : '') + '</small></span><b class="pos">' + sUsd(e.v) + '</b></div>';
+      if (e.type === 'achat') return '<div class="sm-e buy"><span class="i">' + ico('cart') + '</span><span>Achat du compte ' + e.n + '<small>' + fullDayR(d) + '</small></span><b>' + sUsd(e.v) + '</b></div>';
+      if (e.type === 'p1') return '<div class="sm-e ok"><span class="i">' + ico('check') + '</span><span>Phase 1 réussie<small>' + fullDayR(d) + ' · +8 % sur les trades fermés</small></span><b>phase 2</b></div>';
+      if (e.type === 'p2') return '<div class="sm-e ok"><span class="i">' + ico('check') + '</span><span>Phase 2 réussie<small>' + fullDayR(d) + ' · +5 % : compte financé</small></span><b>financé</b></div>';
+      return '<div class="sm-e burn"><span class="i">' + ico('flame') + '</span><span>Compte cramé ' + (e.ph < 3 ? 'en phase ' + e.ph : 'financé') + '<small>' + fullDayR(d) + ' · ' + (e.why === 'jour' ? 'perte du jour au-delà de 5 %' : 'perte totale au-delà de 10 %') + '</small></span><b class="neg">' + usd(e.loss) + '</b></div>';
+    };
+    $('sm-journey').innerHTML = '<div class="sm-head"><h2>Parcours du compte</h2><span class="muted">du plus récent au plus ancien</span></div><div class="sm-jr">' + rev.slice(0, 8).map(row).join('') + '</div>' +
+      (rev.length > 8 ? '<details class="sm-more"><summary>Voir tout le parcours (' + rev.length + ' étapes)</summary><div class="sm-jr">' + rev.slice(8).map(row).join('') + '</div></details>' : '');
+
+    $('sm-trades').innerHTML = '<div class="sm-head"><h2>Les trades de la période</h2><span class="muted">' + L.length + ' trades · ' + (closed ? Math.round(win / closed * 100) : 0) + ' % gagnants · ' + sUsd(tot) + '</span></div>' +
+      (L.length ? '<div class="sm-trs">' + L.slice(0, smMax).map(function (o) {
+        var t = o.t, amt = size * t.lev * t.net, lots = Math.round(size * t.lev / (t.pe * (+cfg.ct[t.k] || 10)) / (+cfg.step || 0.01)) * (+cfg.step || 0.01);
+        return '<details class="sm-tr"><summary><span class="i ' + (amt >= 0 ? 'g' : 'r') + '">' + ico(t.stopped ? 'stop' : 'enter') + '</span><span class="w"><b>' + IDX[t.k].name + '</b><span class="sm-tag">' + (o.f ? 'financé' : 'phase') + '</span>' + (t.open ? '<span class="sm-tag live">en cours</span>' : t.stopped ? '<span class="sm-tag stop">stop</span>' : '') +
+          '<small>' + shortDay(t.e) + ' ' + yOf(t.e) + ' → ' + (t.open ? 'en cours' : shortDay(t.x)) + ' · ' + t.n + ' séance' + (t.n > 1 ? 's' : '') + '</small></span><span class="r"><b class="' + (amt >= 0 ? 'pos' : 'neg') + '">' + sUsd(amt) + '</b><small>' + pct(t.net, 2) + '</small></span></summary>' +
+          '<div class="sm-td"><div><span>Entrée · ' + fullDayR(t.e) + '</span><b>' + px(t.pe) + '</b></div><div><span>' + (t.open ? 'Dernier cours' : 'Sortie · ' + fullDayR(t.x)) + '</span><b>' + px(t.px) + '</b></div>' +
+          '<div><span>Taille</span><b>' + levTxt(t.lev) + ' · ' + nf(lots, 2) + ' lot</b></div><div><span>Stop</span><b>' + (o.f ? px(t.pe * (1 - stopFor(t.lev))) : 'aucun (phase)') + '</b></div>' +
+          '<div><span>Variation de l\'indice</span><b class="' + (t.gross >= 0 ? 'pos' : 'neg') + '">' + pct(t.gross, 2) + '</b></div><div><span>Frais compris</span><b>' + (M.swap ? 'écart d\'achat-vente' : 'écart + frais de nuit') + '</b></div></div></details>';
+      }).join('') + '</div>' + (L.length > smMax ? '<button class="sm-btn" data-smmore>Afficher ' + Math.min(30, L.length - smMax) + ' trades de plus</button>' : '') : '<p class="empty">Aucun trade sur la période.</p>') +
+      '<p class="muted">Pendant les phases, la règle trade sans stop ; sur le compte financé, avec le stop de la règle des 3 %. Un nouveau compte ne reprend pas les trades ouverts sur l\'ancien.</p>';
+  }
+  /* solde du compte : phases surlignées, objectifs, perte maximale, paiements et comptes cramés */
+  function smChart(el, sim, size) {
+    var bal = sim.bal, ph = sim.ph, xd = sim.days, n = bal.length, W = Math.max(280, el.clientWidth || 600), H = 230, padL = 52, padR = 8, padT = 10, padB = 22;
+    if (!n) { el.innerHTML = ''; return; }
+    var mx = Math.max(size * 1.09, Math.max.apply(null, bal)), mn = Math.min(size * 0.89, Math.min.apply(null, bal));
+    var X = function (i) { return padL + i / Math.max(1, n - 1) * (W - padL - padR); }, Yv = function (v) { return padT + (mx - v) / (mx - mn) * (H - padT - padB); };
+    var bands = '', st = -1, cur = 0;
+    for (var i = 0; i <= n; i++) {
+      var p = i < n ? ph[i] : 0;
+      if (p !== cur) {
+        if (st >= 0 && cur < 3) { var tg = cur === 1 ? 1.08 : 1.05; bands += '<rect x="' + X(st).toFixed(1) + '" y="' + padT + '" width="' + Math.max(1, X(i - 1) - X(st)).toFixed(1) + '" height="' + (H - padT - padB) + '" fill="' + (cur === 1 ? 'var(--accent-soft)' : 'var(--warn-soft)') + '"/><line x1="' + X(st).toFixed(1) + '" x2="' + X(i - 1).toFixed(1) + '" y1="' + Yv(tg * size).toFixed(1) + '" y2="' + Yv(tg * size).toFixed(1) + '" stroke="var(--good)" stroke-dasharray="4 3"/>'; }
+        st = i; cur = p;
+      }
+    }
+    var step = Math.max(1, Math.floor(n / 700)), lb = '';
+    for (i = 0; i < n; i += step) lb += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Yv(bal[i]).toFixed(1);
+    lb += 'L' + X(n - 1).toFixed(1) + ' ' + Yv(bal[n - 1]).toFixed(1);
+    var range = mx - mn, tk = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000].filter(function (v) { return range / v <= 6; })[0] || 100000, ticks = '';
+    for (var v = Math.ceil(mn / tk) * tk; v <= mx; v += tk) ticks += '<line class="gl" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(v).toFixed(1) + '" y2="' + Yv(v).toFixed(1) + '"/><text class="ax" x="' + (padL - 6) + '" y="' + (Yv(v) + 4).toFixed(1) + '" text-anchor="end">' + nf(v / 1000, v % 1000 ? 1 : 0) + ' k</text>';
+    var yl = '', lastY = null;
+    for (i = 0; i < n; i++) { var yy = new Date(xd[i] * DAY).getUTCFullYear(); if (yy !== lastY) { if (lastY !== null) yl += '<text class="ax" x="' + X(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + yy + '</text>'; lastY = yy; } }
+    if (n < 300) { yl = ''; var lm = null; for (i = 0; i < n; i++) { var mm = new Date(xd[i] * DAY).getUTCMonth(); if (mm !== lm) { if (lm !== null && mm % (n > 120 ? 3 : 1) === 0) yl += '<text class="ax" x="' + X(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + MOIS[mm] + '</text>'; lm = mm; } } }
+    var idx = {}, marks = ''; xd.forEach(function (d, k) { idx[d] = k; });
+    sim.ev.forEach(function (e) {
+      var k = idx[e.d]; if (k === undefined) return;
+      if (e.type === 'paiement') marks += '<circle cx="' + X(k).toFixed(1) + '" cy="' + Yv(bal[k] + e.gross).toFixed(1) + '" r="3.5" fill="var(--good)"/>';
+      if (e.type === 'crame') marks += '<circle cx="' + X(k).toFixed(1) + '" cy="' + Yv(Math.max(mn, 0.9 * size)).toFixed(1) + '" r="4.5" fill="var(--crit)"/>';
+    });
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Solde du compte">' + bands + ticks + yl +
+      '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(0.9 * size).toFixed(1) + '" y2="' + Yv(0.9 * size).toFixed(1) + '" stroke="var(--crit)" stroke-width="1.2"/>' +
+      '<path class="ln" d="' + lb + '" stroke="var(--accent)"/>' + marks + '<line class="cross" y1="' + padT + '" y2="' + (H - padB) + '" style="display:none"/></svg><div class="tip" hidden></div>';
+    var svg = el.querySelector('svg'), tip = el.querySelector('.tip'), cross = el.querySelector('.cross');
+    var move = function (evn) {
+      var r = svg.getBoundingClientRect(), pxx = (evn.touches ? evn.touches[0].clientX : evn.clientX) - r.left, k = Math.round((pxx * W / r.width - padL) / (W - padL - padR) * (n - 1));
+      if (k < 0 || k >= n) { tip.hidden = true; cross.style.display = 'none'; return; }
+      cross.setAttribute('x1', X(k)); cross.setAttribute('x2', X(k)); cross.style.display = '';
+      tip.hidden = false; tip.style.left = (X(k) * r.width / W) + 'px'; tip.style.top = (Yv(bal[k]) * r.height / H - 8) + 'px';
+      tip.innerHTML = fullDayR(xd[k]) + '<br>' + (ph[k] === 3 ? 'Compte financé' : 'Phase ' + ph[k]) + ' · solde <b>' + usd(bal[k]) + '</b>';
+    };
+    svg.addEventListener('pointermove', move); svg.addEventListener('pointerdown', move);
+    svg.addEventListener('pointerleave', function () { tip.hidden = true; cross.style.display = 'none'; });
+  }
+  function smLine(el, xd, ys) {
+    var n = ys.length, W = Math.max(260, el.clientWidth || 400), H = 190, padL = 52, padR = 8, padT = 10, padB = 22;
+    if (!n) { el.innerHTML = ''; return; }
+    var mx = Math.max(0, Math.max.apply(null, ys)), mn = Math.min(0, Math.min.apply(null, ys)); if (mx === mn) mx = mn + 1;
+    var X = function (i) { return padL + i / Math.max(1, n - 1) * (W - padL - padR); }, Yv = function (v) { return padT + (mx - v) / (mx - mn) * (H - padT - padB); };
+    var step = Math.max(1, Math.floor(n / 500)), d = '';
+    for (var i = 0; i < n; i += step) d += (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Yv(ys[i]).toFixed(1);
+    d += 'L' + X(n - 1).toFixed(1) + ' ' + Yv(ys[n - 1]).toFixed(1);
+    var area = d + 'L' + X(n - 1).toFixed(1) + ' ' + Yv(0).toFixed(1) + 'L' + X(0).toFixed(1) + ' ' + Yv(0).toFixed(1) + 'Z';
+    var range = mx - mn, tk = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000].filter(function (v) { return range / v <= 5; })[0] || 100000, ticks = '';
+    for (var v = Math.ceil(mn / tk) * tk; v <= mx; v += tk) ticks += '<line class="gl" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(v).toFixed(1) + '" y2="' + Yv(v).toFixed(1) + '"/><text class="ax" x="' + (padL - 6) + '" y="' + (Yv(v) + 4).toFixed(1) + '" text-anchor="end">' + (Math.abs(v) >= 1000 ? nf(v / 1000, v % 1000 ? 1 : 0) + ' k' : nf(v)) + '</text>';
+    var yl = '', lastY = null;
+    for (i = 0; i < n; i++) { var yy = new Date(xd[i] * DAY).getUTCFullYear(); if (yy !== lastY) { if (lastY !== null) yl += '<text class="ax" x="' + X(i).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + yy + '</text>'; lastY = yy; } }
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Argent reçu moins dépensé">' + ticks + yl +
+      '<path d="' + area + '" fill="var(--good)" opacity=".12"/><line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(0).toFixed(1) + '" y2="' + Yv(0).toFixed(1) + '" stroke="var(--ink-3)"/>' +
+      '<path class="ln" d="' + d + '" stroke="var(--good)"/><text class="ax" x="' + (W - padR) + '" y="' + (Yv(ys[n - 1]) - 6).toFixed(1) + '" text-anchor="end" style="font-weight:700;fill:var(--ink)">' + sUsd(ys[n - 1]) + '</text></svg>';
   }
 
   function barChart(el, o) {
@@ -1163,11 +1368,11 @@
 
   function renderAll() {
     if (!A.spx) return;
-    renderBord(); renderOrdres(); renderCompte(); renderJournal(); renderBilan(); if (!$('v-graph').hidden) renderGraph();
+    renderBord(); renderOrdres(); renderCompte(); renderJournal(); renderBilan(); if (!$('v-graph').hidden) renderGraph(); if (!$('v-simu').hidden) renderSimu();
   }
 
   /* ---------- navigation ---------- */
-  var VIEWS = ['bord', 'ordres', 'graph', 'compte', 'journal', 'regle'];
+  var VIEWS = ['bord', 'ordres', 'graph', 'compte', 'journal', 'simu', 'regle'];
   function show(v) {
     if (VIEWS.indexOf(v) < 0) v = 'bord';
     VIEWS.forEach(function (k) { $('v-' + k).hidden = k !== v; });
@@ -1175,7 +1380,7 @@
     if (sheetId) closeSheet();
     $('title').textContent = $('v-' + v).dataset.title;
     store.set('tab', v); window.scrollTo(0, 0);
-    if (A.spx) { if (v === 'bord') renderBord(); if (v === 'journal') renderJournal(); if (v === 'regle') renderBilan(); if (v === 'ordres') renderOrdres(); if (v === 'graph') renderGraph(); }
+    if (A.spx) { if (v === 'bord') renderBord(); if (v === 'journal') renderJournal(); if (v === 'regle') renderBilan(); if (v === 'ordres') renderOrdres(); if (v === 'graph') renderGraph(); if (v === 'simu') renderSimu(); }
   }
   document.querySelectorAll('.nav button').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.v); }); });
   document.addEventListener('click', function (ev) {
