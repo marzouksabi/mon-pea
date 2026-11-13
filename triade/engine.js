@@ -136,6 +136,11 @@
         for (j = 0; j < NI; j++) HR[j][t] = curR[j];
       }
     }
+    // ---- option avoirs fournis (labo) : remplace le repli comme 1er moteur par des avoirs calculés ailleurs {CODE: [avoir par séance]}
+    if (opts.customH) {
+      HR = []; for (j = 0; j < NI; j++) HR.push(new Float64Array(T));
+      Object.keys(opts.customH).forEach(function (c) { var jj = CODES.indexOf(c), arr = opts.customH[c]; if (jj < 0) return; for (t = 0; t < T; t++) HR[jj][t] = arr[Math.min(t, arr.length - 1)] || 0; });
+    }
     // ---- 3) V1 : indices dosés au-dessus de la moyenne de 200 séances
     var HV = [];
     for (j = 0; j < NI; j++) HV.push(new Float64Array(T));

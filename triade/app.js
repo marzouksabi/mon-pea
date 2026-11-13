@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 13/11 12:01';
+  var VERSION = 'version du 13/11 22:16';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -269,7 +269,7 @@
   }
 
   /* ---------- vues ---------- */
-  var TITLES = { soir: 'Ce soir', pos: 'Positions', trades: 'Trades', simu: 'Simuler', bilan: 'Bilan', compte: 'Compte' };
+  var TITLES = { soir: 'Ce soir', pos: 'Positions', trades: 'Trades', simu: 'Simuler', bilan: 'Bilan', reel: 'Mon compte réel', compte: 'Compte' };
   function show(v) {
     if (!TITLES[v]) v = 'soir';
     S.view = v; store.set('view', v);
@@ -296,6 +296,7 @@
     else if (S.view === 'bilan') renderBilan();
     else if (S.view === 'trades') renderTrades();
     else if (S.view === 'simu') renderSimu();
+    else if (S.view === 'reel') renderReel();
     else renderCompte();
   }
   function stamp() {
@@ -1026,6 +1027,175 @@
       '<path class="ln" d="' + d + '" stroke="' + color + '"/><text class="ax" x="' + (W - padR) + '" y="' + (Yv(ys[n - 1]) - 6).toFixed(1) + '" text-anchor="end" style="font-weight:700;fill:var(--ink)">' + sUsd(ys[n - 1]) + '</text></svg>';
   }
 
+  /* ---- Mon compte réel : lecture du rapport d'historique MT5 (HTML), rien ne quitte l'appareil ---- */
+  var RE_DATE = /^\d{4}[.\-\/]\d{2}[.\-\/]\d{2}( \d{2}:\d{2}(:\d{2})?)?$/;
+  function rnum(s) {
+    if (s === undefined || s === null) return NaN;
+    s = String(s).replace(/[\s  ]/g, '');
+    if (!s || s === '-') return NaN;
+    if (s.indexOf(',') >= 0 && s.indexOf('.') < 0) s = s.replace(',', '.'); else s = s.replace(/,/g, '');
+    var v = parseFloat(s); return isNaN(v) ? NaN : v;
+  }
+  function rdate(s) { var m = String(s).match(/(\d{4})[.\-\/](\d{2})[.\-\/](\d{2})(?: (\d{2}):(\d{2})(?::(\d{2}))?)?/); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)) : NaN; }
+  var RSEC = [['open', /^(open positions|positions ouvertes|positions en cours)$/i], ['working', /^(working orders|ordres en attente|ordres en cours)$/i],
+    ['positions', /^(positions|positions fermées|closed positions)$/i], ['orders', /^(orders|ordres)$/i], ['deals', /^(deals|transactions|opérations|operations|historique des transactions)$/i]];
+  var RCOL = { time: /^(time|heure|date|temps)$/, id: /^(deal|transaction|position|ticket|order|ordre)$/, sym: /^(symbol|symbole)$/, type: /^type$/, dir: /^(direction|sens)$/,
+    vol: /^volume$/, px: /^(price|prix|cours)$/, sl: /^(s ?\/ ?l|sl|stop loss)$/, tp: /^(t ?\/ ?p|tp|take profit)$/, comm: /^commission$/, fee: /^(fee|frais)$/, swap: /^swap$/,
+    profit: /^(profit|bénéfice|benefice|résultat|resultat)$/, bal: /^(balance|solde)$/, comment: /^(comment|commentaire)$/, mkt: /^(market price|prix du marché|cours actuel)$/ };
+  function parseReport(html) {
+    var doc = new DOMParser().parseFromString(html, 'text/html'), sec = '', cols = {}, R = { meta: {}, deals: [], closed: [], open: [], summary: {} };
+    doc.querySelectorAll('tr').forEach(function (tr) {
+      var cells = Array.prototype.filter.call(tr.children, function (c) { return !/hidden/.test(c.className || '') && !/display\s*:\s*none/i.test(c.getAttribute('style') || ''); })
+        .map(function (c) { return (c.textContent || '').replace(/\s+/g, ' ').trim(); });
+      var full = cells.filter(Boolean);
+      if (!full.length) return;
+      if (full.length === 1) { var tt = full[0].replace(/:$/, ''); RSEC.forEach(function (x) { if (x[1].test(tt)) { sec = x[0]; cols = {}; } }); return; }
+      if (full.length === 2 && /:$/.test(full[0]) && !RE_DATE.test(full[0])) R.meta[full[0].replace(/:$/, '').toLowerCase()] = full[1];
+      for (var i = 0; i < cells.length - 1; i++) if (/:$/.test(cells[i]) && !isNaN(rnum(cells[i + 1]))) R.summary[cells[i].replace(/:$/, '').toLowerCase()] = rnum(cells[i + 1]);
+      if (!RE_DATE.test(cells[0])) {                                       // ligne d'en-tête : repère les colonnes par leur nom
+        var map = {}, seen = {};
+        cells.forEach(function (c, k) { var lc = c.toLowerCase(); Object.keys(RCOL).forEach(function (key) { if (RCOL[key].test(lc)) { var kk = seen[key] ? key + '2' : key; seen[key] = 1; if (map[kk] === undefined) map[kk] = k; } }); });
+        if (map.sym !== undefined && map.type !== undefined) cols = map;
+        return;
+      }
+      var g = function (key, def) { var k = cols[key] !== undefined ? cols[key] : def; return k === undefined || k < 0 ? '' : cells[k]; };
+      var ty = function (s) { s = (s || '').toLowerCase(); return /^(buy|achat)/.test(s) ? 'buy' : /^(sell|vente)/.test(s) ? 'sell' : /^(balance|solde|deposit|dépôt|withdraw|retrait|credit|crédit)/.test(s) ? 'balance' : s; };
+      var isDeal = sec === 'deals' || (!sec && /^(in|out|in\/out|out by|entrée|sortie)/i.test(cells[4] || ''));
+      if (isDeal) R.deals.push({ t: rdate(cells[0]), id: g('id', 1), sym: g('sym', 2), type: ty(g('type', 3)), dir: (g('dir', 4) || '').toLowerCase(), vol: rnum(g('vol', 5)), px: rnum(g('px', 6)),
+        comm: rnum(g('comm', 8)) || 0, fee: rnum(g('fee', -1)) || 0, swap: rnum(g('swap', 10)) || 0, profit: rnum(g('profit', 11)) || 0, bal: rnum(g('bal', 12)), comment: g('comment', 13) });
+      else if (sec === 'positions' && RE_DATE.test(g('time2', 8))) R.closed.push({ t0: rdate(cells[0]), id: g('id', 1), sym: g('sym', 2), type: ty(g('type', 3)), vol: rnum(g('vol', 4)), p0: rnum(g('px', 5)),
+        sl: rnum(g('sl', 6)), tp: rnum(g('tp', 7)), t1: rdate(g('time2', 8)), p1: rnum(g('px2', 9)), comm: rnum(g('comm', 10)) || 0, swap: rnum(g('swap', 11)) || 0, profit: rnum(g('profit', 12)) || 0 });
+      else if (sec === 'open') R.open.push({ t0: rdate(cells[0]), id: g('id', 1), sym: g('sym', 2), type: ty(g('type', 3)), vol: rnum(g('vol', 4)), p0: rnum(g('px', 5)), sl: rnum(g('sl', 6)), tp: rnum(g('tp', 7)),
+        px: rnum(g('mkt', 8)), swap: rnum(g('swap', 9)) || 0, profit: rnum(g('profit', 10)) || 0 });
+    });
+    return R;
+  }
+  function readReport(file) {
+    return file.arrayBuffer().then(function (buf) {
+      var b = new Uint8Array(buf), enc = b[0] === 0xFF && b[1] === 0xFE ? 'utf-16le' : b[0] === 0xFE && b[1] === 0xFF ? 'utf-16be' : 'utf-8';
+      if (enc === 'utf-8') { var z = 0; for (var i = 1; i < Math.min(b.length, 4000); i += 2) if (b[i] === 0) z++; if (z > 500) enc = 'utf-16le'; }
+      return parseReport(new TextDecoder(enc).decode(buf));
+    });
+  }
+  var ALIAS = { US500: 'SPX500', SP500: 'SPX500', US100: 'NDX100', USTEC: 'NDX100', NAS100: 'NDX100', NAS: 'NDX100', DJ30: 'US30', DOW: 'US30', DE40: 'GER30', GER40: 'GER30', DAX: 'GER30', DAX40: 'GER30',
+    FR40: 'FRA40', CAC40: 'FRA40', JPN225: 'JP225', NIKKEI: 'JP225', HSI: 'HK50', GOLD: 'XAUUSD', SILVER: 'XAGUSD' };
+  function codeOf(sym) {
+    var s = String(sym || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    for (var k = 0; k < ORDER.length; k++) if (s.indexOf(ORDER[k]) === 0) return ORDER[k];
+    for (var a in ALIAS) if (s.indexOf(a) === 0) return ALIAS[a];
+    return null;
+  }
+  function realData() { return S.real || (S.real = store.get('real', null)); }
+  function renderReel() {
+    var R = realData();
+    $('r-import').innerHTML = '<div class="card-head"><h2>Importer mon relevé MT5</h2><span class="small">' + (R ? 'importé le ' + new Date(R.at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'aucun relevé') + '</span></div>' +
+      '<ol class="steps" style="margin-top:4px"><li>Sur le PC, dans MT5 : onglet <b>Historique</b>, clic droit, <b>Rapport</b>, puis <b>HTML</b>. Choisis toute la période du compte.</li><li>Envoie le fichier sur ton téléphone (mail, Drive, iCloud) et ouvre-le ici.</li></ol>' +
+      '<div class="rbtns"><label class="rfile">' + ico('sync') + '<span>Choisir le rapport MT5</span><input type="file" id="r-file" accept=".htm,.html,text/html"></label>' + (R ? '<button class="rclear" id="r-clear">Effacer</button>' : '') + '</div>' +
+      '<p class="muted">Le fichier est lu sur ton téléphone et reste dedans : rien n\'est envoyé ailleurs.</p>';
+    var ids = ['r-hero', 'r-rules', 'r-curve', 'r-open', 'r-trades', 'r-months'];
+    if (!R) { ids.forEach(function (id) { $(id).innerHTML = ''; $(id).hidden = true; }); return; }
+    ids.forEach(function (id) { $(id).hidden = false; });
+    var deals = R.deals.slice().sort(function (a, b) { return a.t - b.t; }), money = deals.filter(function (d) { return d.type === 'balance'; }), trades = deals.filter(function (d) { return d.type !== 'balance'; });
+    var init = money.length ? money[0].profit : (deals.length && deals[0].bal === deals[0].bal ? deals[0].bal - deals[0].profit : cfg.size);
+    var lastBal = deals.length && deals[deals.length - 1].bal === deals[deals.length - 1].bal ? deals[deals.length - 1].bal : init + trades.reduce(function (s, d) { return s + d.profit + d.comm + d.fee + d.swap; }, 0);
+    var bal = R.summary.balance || R.summary.solde || lastBal, floating = R.open.reduce(function (s, p) { return s + p.profit + p.swap; }, 0);
+    var eq = R.summary.equity || R.summary['fonds propres'] || R.summary['capitaux propres'] || bal + floating;
+    var paid = money.slice(1).filter(function (d) { return d.profit < 0; }).reduce(function (s, d) { return s - d.profit; }, 0);
+    var closed = R.closed.length ? R.closed : [], wins = closed.filter(function (p) { return p.profit + p.comm + p.swap > 0; }).length;
+    var tradePnl = trades.reduce(function (s, d) { return s + d.profit + d.comm + d.fee + d.swap; }, 0);
+    var phase = cfg.phase, floor = init * 0.94, target = init * 1.10, lastDay = deals.length ? Math.floor(deals[deals.length - 1].t / DAY) : null;
+    var dayPnl = trades.filter(function (d) { return Math.floor(d.t / DAY) === lastDay; }).reduce(function (s, d) { return s + d.profit + d.comm + d.fee + d.swap; }, 0) + floating;
+    var acct = String(R.meta.account || R.meta.compte || '').split(/[\s(]/)[0], name = R.meta.name || R.meta.nom || '';
+    $('r-hero').innerHTML = '<div class="card-head"><h3>' + esc(acct ? 'Compte ' + acct : 'Mon compte réel') + '</h3><span class="tri" aria-hidden="true"><i></i><i></i><i></i></span></div>' +
+      '<div class="count">' + usd(eq) + '</div><p class="sub">fonds propres (positions ouvertes comprises) · solde ' + usd(bal) + '</p>' +
+      '<p>Départ ' + usd(init) + ' · résultat des trades ' + sUsd(tradePnl) + (paid ? ' · retraits reçus ' + usd(paid) : '') + ' · ' + closed.length + ' positions fermées' + (closed.length ? ', ' + Math.round(wins / closed.length * 100) + ' % gagnantes' : '') + '.</p>' +
+      '<div class="kpis"><div><span>Depuis le départ</span><b>' + pct((eq + paid - init) / init) + '</b></div><div><span>Positions ouvertes</span><b>' + R.open.length + '</b></div>' +
+      '<div><span>Latent</span><b>' + sUsd(floating) + '</b></div><div><span>Dernier mouvement</span><b>' + (lastDay !== null ? shortDay(lastDay) : '—') + '</b></div></div>';
+
+    // règles FundedNext 1-Step
+    var risk = 0, nostop = [];
+    R.open.forEach(function (p) {
+      var c = codeOf(p.sym); if (!c) return;
+      if (!(p.sl > 0)) { nostop.push(p.sym); return; }
+      var run = S.off, t = run.T0 - 1, v = vpl(run, c, t), cur = run.C[IX[c]][t];
+      risk += Math.max(0, (p.type === 'buy' ? p.p0 - p.sl : p.sl - p.p0)) / p.p0 * p.vol * v * (p.p0 / cur);
+    });
+    var meter = function (lab, val, max, txt, bad, inv) {                // inv : une barre pleine est une bonne nouvelle (marge restante)
+      var f = Math.max(0, Math.min(1, val / max)), cls = bad ? ' crit' : inv ? (f < 0.5 ? ' warn' : ' good') : f > 0.8 ? ' warn' : '';
+      return '<div class="rm"><div class="rm-h"><span>' + lab + '</span><b class="' + (bad ? 'neg' : '') + '">' + txt + '</b></div><div class="bar' + cls + '"><i style="width:' + (f * 100).toFixed(0) + '%"></i></div></div>';
+    };
+    $('r-rules').innerHTML = '<h2>Règles FundedNext (1-Step, ' + (phase === 'challenge' ? 'challenge' : 'compte financé') + ')</h2>' +
+      meter('Marge avant le seuil de perte (' + usd(floor) + ')', eq - floor, init * 0.06, usd(eq - floor), eq - floor < init * 0.015, true) +
+      meter('Perte du jour (' + (lastDay !== null ? shortDay(lastDay) : '—') + ', limite 3 %)', Math.max(0, -dayPnl), init * 0.03, (dayPnl < 0 ? usd(-dayPnl) : '0 $') + ' sur ' + usd(init * 0.03), -dayPnl > init * 0.025) +
+      meter('Risque aux stops (plafond 3 %)', risk, init * 0.03, usd(risk) + ' · ' + upct(risk / init, 2), risk > init * 0.03 || nostop.length) +
+      (phase === 'challenge' ? meter('Objectif du challenge (+10 %)', Math.max(0, bal - init), init * 0.10, pct((bal - init) / init) + ' sur +10 %', false)
+        : '<div class="rm"><div class="rm-h"><span>Retrait possible (80 % des gains)</span><b class="pos">' + usd(Math.max(0, bal - init) * 0.8) + '</b></div></div>') +
+      (nostop.length ? '<ul class="notes" style="margin-top:10px"><li class="crit">' + ico('alert') + '<span><b>Position sans stop : ' + esc(nostop.join(', ')) + '.</b> FundedNext la compte comme un risque de 100 % : place un stop tout de suite.</span></li></ul>' : '') +
+      '<p class="muted">Calculé sur le relevé importé ; le tableau de bord FundedNext fait foi.</p>';
+
+    // courbe du solde
+    var pts = []; deals.forEach(function (d) { if (d.bal === d.bal) pts.push([d.t, d.bal]); });
+    $('r-curve').innerHTML = '<div class="card-head"><h2>Solde du compte</h2><span class="small">après chaque opération</span></div><div class="chart" id="r-chart"></div>' +
+      '<div class="legend"><span><i style="background:var(--accent)"></i>solde</span><span><i style="background:var(--crit)"></i>seuil de perte</span>' + (phase === 'challenge' ? '<span><i style="background:var(--good)"></i>objectif +10 %</span>' : '') + '</div>';
+    realChart($('r-chart'), pts, floor, phase === 'challenge' ? target : null, init);
+
+    // positions ouvertes face au moteur
+    var run = S.run || S.off, tt = run.T - 1, mlots = lotsAt(run, tt), real = {};
+    R.open.forEach(function (p) { var c = codeOf(p.sym) || p.sym; real[c] = (real[c] || 0) + (p.type === 'buy' ? 1 : -1) * p.vol; });
+    var codes = ORDER.filter(function (c) { return real[c] || mlots[IX[c]]; }).concat(Object.keys(real).filter(function (c) { return ORDER.indexOf(c) < 0; }));
+    var l2 = function (v) { return v ? (v > 0 ? 'achat ' : 'vente ') + nf(Math.abs(v), 2) : '—'; };
+    $('r-open').innerHTML = '<div class="card-head"><h2>Mes positions face au moteur</h2><span class="small">relevé du ' + (lastDay !== null ? shortDay(lastDay) : '—') + ' · moteur ' + (run === S.off ? 'au dernier soir' : 'ce soir') + '</span></div>' +
+      (codes.length ? '<div class="scroll"><table class="ptable"><thead><tr><th>Marché</th><th>Sur MT5</th><th>Moteur</th><th>État</th></tr></thead><tbody>' + codes.map(function (c) {
+        var a = Math.round((real[c] || 0) * 100) / 100, b = ORDER.indexOf(c) >= 0 ? mlots[IX[c]] : 0, okk = Math.abs(a - b) < 0.005;
+        return '<tr><td><b>' + esc(c) + '</b></td><td>' + l2(a) + '</td><td>' + l2(b) + '</td><td class="' + (okk ? 'pos' : 'neg') + '">' + (okk ? 'conforme' : ORDER.indexOf(c) < 0 ? 'hors moteur' : 'à ajuster') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<div class="empty">' + ico('flat') + 'Aucune position ouverte dans le relevé.</div>') +
+      '<p class="muted">Le relevé montre les positions au moment de l\'export ; si tu as passé des ordres depuis, réimporte-le.</p>';
+
+    // positions fermées, avec le trade du moteur correspondant
+    var mt = buildTrades(S.off);
+    var rows = closed.slice().sort(function (a, b) { return b.t1 - a.t1; }).slice(0, 60).map(function (p) {
+      var c = codeOf(p.sym), side = p.type === 'buy' ? 1 : -1, d0 = Math.floor(p.t0 / DAY), net = p.profit + p.comm + p.swap;
+      var m = c ? mt.filter(function (x) { return x.code === c && x.side === side && Math.abs(S.D.days[Math.min(x.t0, S.D.days.length - 1)] - d0) <= 3; })[0] : null;
+      var slip = m ? side * (m.px0 - p.p0) / m.px0 : null;
+      return '<tr><td class="m"><b>' + esc(p.sym) + '</b><span>' + (side > 0 ? 'achat' : 'vente') + ' ' + nf(p.vol, 2) + '</span></td><td>' + shortDay(d0) + ' → ' + shortDay(Math.floor(p.t1 / DAY)) + '</td>' +
+        '<td class="' + (net >= 0 ? 'pos' : 'neg') + '">' + sUsd(net) + '</td><td>' + (m ? '<span class="side l">moteur</span>' + (slip !== null ? ' <span class="small">' + pct(slip, 2) + '</span>' : '') : '<span class="side f">hors moteur</span>') + '</td></tr>';
+    }).join('');
+    $('r-trades').innerHTML = '<div class="card-head"><h2>Mes trades fermés</h2><span class="small">' + closed.length + ' positions · écart d\'entrée face au moteur</span></div>' +
+      (closed.length ? '<div class="scroll"><table class="ptable"><thead><tr><th>Marché</th><th>Dates</th><th>Résultat</th><th>Moteur</th></tr></thead><tbody>' + rows + '</tbody></table></div>' : '<div class="empty">' + ico('flat') + 'Aucune position fermée dans le relevé.</div>') +
+      '<p class="muted">« moteur » : le moteur a ouvert ce trade dans le même sens à 3 jours près ; le pourcentage compare ton prix d\'entrée au sien (positif = mieux que le moteur).</p>';
+
+    // mois par mois
+    var mo = {}; trades.forEach(function (d) { var x = new Date(d.t), k = x.getUTCFullYear() + '-' + String(x.getUTCMonth() + 1).padStart(2, '0'); mo[k] = (mo[k] || 0) + d.profit + d.comm + d.fee + d.swap; });
+    var ks = Object.keys(mo).sort().reverse();
+    $('r-months').innerHTML = '<h2>Mois par mois</h2>' + (ks.length ? '<div class="months">' + ks.slice(0, 12).map(function (k) {
+      var v = mo[k], a = Math.min(1, Math.abs(v) / (init * 0.03)), mm = +k.slice(5) - 1;
+      return '<div style="background:color-mix(in srgb,' + (v >= 0 ? 'var(--accent)' : 'var(--crit)') + ' ' + Math.round(8 + a * 30) + '%,transparent)"><span>' + MOIS[mm] + ' ' + k.slice(2, 4) + '</span><b class="' + (v >= 0 ? 'pos' : 'neg') + '">' + sUsd(v) + '</b></div>';
+    }).join('') + '</div>' : '<div class="empty">' + ico('flat') + 'Aucun trade.</div>');
+  }
+  function realChart(el, pts, floor, target, init) {
+    if (pts.length < 2) { el.innerHTML = '<div class="empty">' + ico('flat') + 'Pas assez d\'opérations pour tracer la courbe.</div>'; return; }
+    var W = Math.max(280, el.clientWidth || 600), H = 210, padL = 54, padR = 8, padT = 10, padB = 22, n = pts.length, t0 = pts[0][0], t1 = pts[n - 1][0] || t0 + 1;
+    var vals = pts.map(function (p) { return p[1]; }), mx = Math.max.apply(null, vals.concat([target || 0, init * 1.01])), mn = Math.min.apply(null, vals.concat([floor * 0.995]));
+    var X = function (t) { return padL + (t - t0) / Math.max(1, t1 - t0) * (W - padL - padR); }, Yv = function (v) { return padT + (mx - v) / (mx - mn) * (H - padT - padB); };
+    var d = pts.map(function (p, i) { return (i ? 'L' : 'M') + X(p[0]).toFixed(1) + ' ' + Yv(p[1]).toFixed(1); }).join('');
+    var line = function (v, col, dash) { return '<line x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(v).toFixed(1) + '" y2="' + Yv(v).toFixed(1) + '" stroke="' + col + '"' + (dash ? ' stroke-dasharray="4 3"' : '') + '/>'; };
+    var tk = [50, 100, 200, 500, 1000, 2000, 5000, 10000].filter(function (v) { return (mx - mn) / v <= 5; })[0] || 20000, ticks = '';
+    for (var v = Math.ceil(mn / tk) * tk; v <= mx; v += tk) ticks += '<line class="gl" x1="' + padL + '" x2="' + (W - padR) + '" y1="' + Yv(v).toFixed(1) + '" y2="' + Yv(v).toFixed(1) + '"/><text class="ax" x="' + (padL - 6) + '" y="' + (Yv(v) + 4).toFixed(1) + '" text-anchor="end">' + nf(v / 1000, v % 1000 ? 1 : 0) + ' k</text>';
+    el.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Solde du compte réel">' + ticks + line(init, 'var(--ink-3)', true) + line(floor, 'var(--crit)') + (target ? line(target, 'var(--good)', true) : '') +
+      '<path class="ln" d="' + d + '" stroke="var(--accent)"/><text class="ax" x="' + padL + '" y="' + (H - 6) + '">' + shortDay(Math.floor(t0 / DAY)) + '</text><text class="ax" x="' + (W - padR) + '" y="' + (H - 6) + '" text-anchor="end">' + shortDay(Math.floor(t1 / DAY)) + '</text></svg>';
+  }
+  document.addEventListener('change', function (e) {
+    if (e.target.id !== 'r-file' || !e.target.files || !e.target.files[0]) return;
+    readReport(e.target.files[0]).then(function (R) {
+      if (!R.deals.length && !R.closed.length && !R.open.length) { toast('Relevé non reconnu : envoie-le moi pour que j\'adapte la lecture'); return; }
+      R.at = Date.now(); S.real = R; store.set('real', R); renderReel();
+      toast(R.deals.length + ' opérations, ' + R.closed.length + ' positions fermées, ' + R.open.length + ' ouvertes');
+    }).catch(function () { toast('Impossible de lire ce fichier'); });
+  });
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('#r-clear') && confirm('Effacer le relevé importé de ce téléphone ?')) { S.real = null; store.set('real', null); renderReel(); }
+  });
+
   /* ---- Compte ---- */
   function renderCompte() {
     $('c-phase').value = cfg.phase; $('c-size').value = String(cfg.size); $('c-swap').checked = !!cfg.swap; $('c-vol').value = String(cfg.vol); $('c-step').value = String(cfg.step);
@@ -1105,6 +1275,7 @@
     heure: function (iso) { qaShift = iso ? Date.parse(iso) - Date.now() : 0; S.prov = null; render(); return moment(); },
     cours: function (q) { S.qaQuotes = q || null; S.prov = null; return fetchQuotes().then(render); },
     etat: function () { var m = moment(), run = currentRun(m); return { phase: m.ph, pend: m.pend.map(ds), dernier: ds(m.L), soir: run ? ds(dayOf(run, run.T - 1)) : null, ordres: run ? ordersAt(run, run.T - 1).list.map(function (o) { return o.type + ' ' + o.code + ' ' + o.from + '>' + o.to; }) : null, risque: run ? riskAt(run, run.T - 1) : null }; },
-    run: function () { return S.run; }, data: function () { return S.D; }
+    run: function () { return S.run; }, data: function () { return S.D; },
+    importFichier: function (blob) { return readReport(blob).then(function (R) { R.at = Date.now(); S.real = R; store.set('real', R); render(); return { operations: R.deals.length, fermees: R.closed.length, ouvertes: R.open.length, resume: R.summary, compte: R.meta }; }); }
   };
 })();

@@ -48,7 +48,7 @@ main{flex:1;min-width:0;padding:calc(env(safe-area-inset-top,0px) + 18px) 16px c
 button,select,input{font:inherit;color:inherit}
 
 /* navigation */
-.nav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(6,1fr);background:var(--nav);
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:grid;grid-template-columns:repeat(7,1fr);background:var(--nav);
   -webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px);border-top:1px solid var(--line);
   padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
 .nav .brand{display:none}
@@ -371,3 +371,16 @@ h3.grp{margin:16px 0 8px;font-size:12px}
 .sigban .go{border:0;background:var(--accent);color:#fff;font-weight:650;font-size:13px;padding:9px 12px;border-radius:11px;cursor:pointer;white-space:nowrap}
 @media (max-width:480px){.sigban{grid-template-columns:36px 1fr}.sigban .go{grid-column:1 / -1}}
 .empty.slim{margin-top:0;padding:12px 14px}
+/* mon compte réel */
+@media (max-width:899px){.nav button{font-size:10px;letter-spacing:-.01em}}
+.rbtns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.rfile{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;font-weight:650;font-size:14px;padding:11px 16px;border-radius:12px;cursor:pointer}
+.rfile input{display:none}
+.rclear{border:1px solid var(--line);background:var(--field);color:var(--ink-2);font-weight:620;padding:11px 14px;border-radius:12px;cursor:pointer}
+.rm{margin-top:12px}
+.rm-h{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;color:var(--ink-2)}
+.rm-h b{color:var(--ink);font-variant-numeric:tabular-nums}
+.bar{height:8px;border-radius:6px;background:var(--field);overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:6px}
+.bar.warn i{background:var(--warn)} .bar.crit i{background:var(--crit)}
+.bar.good i{background:var(--good)}
