@@ -354,6 +354,9 @@ b{font-weight:650}
 .warnbox{padding:14px;border-radius:14px;background:var(--warn-soft);color:var(--ink);font-size:14px}
 .smallpos{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--field);font-size:13px;color:var(--ink-2)}
 .smallpos b{color:var(--ink)}
+.startbox{display:flex;gap:10px;align-items:flex-start;margin:0 0 10px;padding:10px 12px;border-radius:12px;background:var(--accent-soft);font-size:13px;color:var(--ink-2);line-height:1.45}
+.startbox b{color:var(--ink)} .startbox svg{flex:none;width:18px;height:18px;margin-top:1px;color:var(--accent)}
+.tag2.off{background:transparent;border:1px solid var(--line, rgba(127,127,127,.35));color:var(--ink-2)}
 .pc .g{grid-template-columns:repeat(4,1fr)}
 /* signaux / trades en cours */
 h3.grp{margin:16px 0 8px;font-size:12px}

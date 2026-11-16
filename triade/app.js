@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 13/11 22:16';
+  var VERSION = 'version du 16/11 13:01';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -433,7 +433,7 @@
 
   /* ---- Positions ---- */
   function renderPos() {
-    var run = S.run || S.off, t = run.T - 1, lots = lotsAt(run, t), day = dayOf(run, t), rows = [], tot = { risk: 0, pnl: 0, gross: 0, n: 0, long: 0, short: 0 };
+    var run = S.run || S.off, t = run.T - 1, lots = lotsAt(run, t), day = dayOf(run, t), rows = [], tot = { risk: 0, pnl: 0, gross: 0, n: 0, long: 0, short: 0, rnow: 0 };
     var fam = { idx: [0, 0], fx: [0, 0], met: [0, 0] }, open = {}, small = [];
     buildTrades(run).forEach(function (x) { if (x.why === 'live') open[x.code] = x; });
     ORDER.forEach(function (code) {
@@ -446,6 +446,8 @@
       var r = lastReset(run, j, t), val = Math.abs(v) * vpl(run, code, r), fr = val / cfg.size, st = stopOf(run, j, t);
       var risk = fr * riskUnit(run, j, t) * cfg.size, pnl = sgn(v) * fr * (run.C[j][t] / run.ENTRY[j][t] - 1) * cfg.size;
       rows.push({ code: code, v: v, st: st, risk: risk, pnl: pnl, val: val, since: r, tr: open[code] });
+      var slr = v > 0 ? run.REF[j][t] * (1 - run.DIST[j][t]) : run.REF[j][t] * (1 + run.DIST[j][t]), cj = run.C[j][t];   // risque si la position est ouverte maintenant (nouveau compte)
+      tot.rnow += Math.max(0, Math.abs(v) * vpl(run, code, t) * (v > 0 ? cj - slr : slr - cj) / cj);
       tot.risk += risk; tot.pnl += pnl; tot.gross += val; tot.n++; if (v > 0) tot.long++; else tot.short++;
       fam[MK[code].f][v > 0 ? 0 : 1] += val / cfg.size;
     });
@@ -484,7 +486,9 @@
       (nsig || nmv ? '<button class="go" data-go="soir">Voir les ordres</button>' : '') + '</div>' +
       '<h3 class="grp">Signaux ' + soirTxt + (nsig ? ' · ' + nsig : '') + '</h3>' +
       (sigCards.length ? '<div class="pcards">' + sigCards.join('') + '</div>' : '<div class="empty slim">' + ico('check') + '<span>Aucun signal : rien à ouvrir, fermer ou changer.</span></div>') +
-      '<h3 class="grp">Trades en cours · ' + keep.length + '</h3><p class="muted" style="margin:0 0 6px">À garder tels quels sur MT5' + (nmv ? ' (seul le stop de ceux marqués change ce soir)' : '') + '. Au démarrage d\'un compte, ouvrez-les tous avec leur stop.</p>' +
+      '<h3 class="grp">Trades en cours · ' + keep.length + '</h3><p class="muted" style="margin:0 0 6px">À garder tels quels sur MT5' + (nmv ? ' (seul le stop de ceux marqués change ce soir)' : '') + '.</p>' +
+      '<div class="startbox">' + ico('flag') + '<div><b>Vous démarrez un compte ?</b> Pour être aligné sur le moteur, ouvrez <b>toutes</b> les positions de cette liste avec leurs lots et leurs stops, en plus des signaux du soir, et pas seulement ces derniers.' +
+      'Ouvertes au cours du moment, elles risquent ensemble <b>' + upct(tot.rnow / cfg.size, 2) + '</b> (' + usd(tot.rnow) + ') si tous les stops sont touchés' + (tot.rnow / cfg.size > 0.029 ? ' : <b>au-dessus de 2,9 %</b>, attendez la prochaine révision pour démarrer.' : '.') + '</div></div>' +
       (keep.length ? '<div class="pcards">' + keep.map(function (x) { return pcard(x, mvs[x.code] ? 'Stop à déplacer ce soir' : '', 'm'); }).join('') + '</div>' : '<div class="empty slim">' + ico('flat') + '<span>Aucun trade en cours.</span></div>') +
       (flats.length ? '<h3 class="grp">Fermées par un stop · ' + flats.length + '</h3><div class="pcards">' + flats.map(function (x) { return pcard(x); }).join('') + '</div>' : '') +
       smallHtml + '<p class="muted">Latent : estimation depuis le prix d\'entrée du moteur ; votre MT5 fait foi.</p>';
@@ -502,8 +506,8 @@
     $('p-next').innerHTML = '<h2>Les trois moteurs ce soir</h2><div class="method">' +
       '<div class="m"><i style="background:var(--e1)"></i><span><b>Repli</b> · ' + (rep.length ? 'en trade : ' + rep.join(', ') : 'pas de trade en cours (il attend une baisse de 2 jours au-dessus de la moyenne 200 jours)') + '</span></div>' +
       '<div class="m"><i style="background:var(--e2)"></i><span><b>Tendance</b> · ' + tn + ' marchés suivis, ' + tl + ' à l\'achat et ' + (tn - tl) + ' à la vente ; prochaine révision ' + longDay(nr.day) + '</span></div>' +
-      '<div class="m"><i style="background:var(--e3)"></i><span><b>Indices</b> · ' + (v1.length ? v1.join(' et ') + ' au-dessus de leur moyenne 200 jours : exposés' : 'S&P 500 et Nasdaq-100 sous leur moyenne 200 jours : à l\'écart') + '</span></div>' +
-      '</div><p class="muted">Poids des moteurs ce soir : repli ' + nf(run.W[0][t], 2) + ', tendance ' + nf(run.W[1][t], 2) + ', indices ' + nf(run.W[2][t], 2) + ' (réglés pour viser ' + upct(cfg.vol, 0) + ' de volatilité par an).</p>';
+      '<div class="m"><i style="background:var(--e3)"></i><span><b>Indices</b> · ' + (v1.length ? v1.join(' et ') + (v1.length > 1 ? ' au-dessus de leur moyenne 200 jours : exposés' : ' au-dessus de sa moyenne 200 jours : exposé') : 'S&P 500 et Nasdaq-100 sous leur moyenne 200 jours : à l\'écart') + '</span></div>' +
+      '</div><p class="muted">Poids des moteurs ce soir : repli ' + nf(run.W[0][t], 2) + ', tendance ' + nf(run.W[1][t], 2) + ', indices ' + nf(run.W[2][t], 2) + ' (réglés pour viser ' + upct(curVol(), 0) + ' de volatilité par an).</p>';
   }
 
   /* ---- Bilan ---- */
@@ -790,6 +794,7 @@
     var live = tr.why === 'live';
     return '<details class="tr ' + cls + '"><summary><span class="i">' + ico(cls) + '</span><span class="w"><b>' + tr.code + '</b> <span class="small">' + (tr.side > 0 ? 'Achat' : 'Vente') + '</span>' +
       '<span class="tag2' + (tr.why === 'stop' ? ' stop' : live ? ' live' : '') + '">' + WHY[tr.why] + '</span>' + (tag ? '<span class="tag2">' + tag + '</span>' : '') +
+      (lv ? '' : '<span class="tag2 off">Trop petit : non pris</span>') +
       '<small>' + shortDay(d0) + (yearOf(d0) !== yearOf(d1) || live ? ' ' + yearOf(d0) : '') + ' → ' + (live ? 'en cours' : shortDay(d1) + ' ' + yearOf(d1)) + ' · ' + ns + ' séance' + (ns > 1 ? 's' : '') + '</small></span>' +
       '<span class="r"><b class="' + (amt >= 0 ? 'pos' : 'neg') + '">' + sUsd(amt) + '</b><small>' + pct(tr.net, 2) + '</small></span></summary>' +
       '<div class="td"><div><span>Entrée · ' + fullDay(d0) + '</span><b>' + pxf(tr.code, tr.px0) + '</b></div>' +
@@ -835,7 +840,9 @@
       (L.length ? '<div class="trs">' + shown.map(row).join('') + '</div>' +
         (L.length > S.tmax ? '<button class="more-btn" data-tmore>Afficher ' + Math.min(40, L.length - S.tmax) + ' trades de plus (' + (L.length - S.tmax) + ' restants)</button>' : '')
         : '<div class="empty">' + ico('flat') + 'Aucun trade.</div>') +
-      '<p class="muted">Les trades « En cours » sont les positions ouvertes en ce moment (onglet Positions, avec les lots de votre compte). Un trade va de l\'ouverture d\'une position à sa fermeture (stop, fin du signal ou retournement) ; les ajustements de taille entre les deux en font partie. Montants calculés sur la taille voulue par le moteur, avant arrondi des lots, aux cours officiels de clôture.</p>';
+      '<p class="muted">Ceci est le journal du <b>moteur</b>, pas celui de votre compte (votre compte : onglet Réel). Les trades « En cours » sont les positions ouvertes en ce moment (onglet Positions, avec les lots de votre compte) ; ' +
+      'leur montant est arrêté au <b>dernier cours officiel de clôture (' + longDay(days[n - 1]) + ')</b> et ne bouge qu\'une fois par soir, alors que MT5 suit le cours en direct : le latent au cours du moment est dans l\'onglet Positions. ' +
+      'Les trades marqués « Trop petit » demandent moins d\'un demi-pas de lot pour un compte de ' + nf(size) + ' $ : ils ne se prennent pas. Un trade va de l\'ouverture d\'une position à sa fermeture (stop, fin du signal ou retournement) ; les ajustements de taille entre les deux en font partie. Montants calculés sur la taille voulue par le moteur, avant arrondi des lots, aux cours officiels de clôture.</p>';
   }
   document.addEventListener('click', function (e) {
     var y = e.target.closest('[data-tyear]'), f = e.target.closest('[data-tfam]'), m = e.target.closest('[data-tmore]');
