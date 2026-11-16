@@ -49,11 +49,24 @@ def daily(sym):
     j = json.loads(get(f'https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(sym)}?period1={p1}&period2={int(time.time())}&interval=1d'))
     r = j['chart']['result'][0]
     q = r['indicators']['quote'][0]
+    rows = [x for x in zip(r['timestamp'], q['open'], q['high'], q['low'], q['close']) if x[4]]
     out = {}
-    for t, o, h, l, c in zip(r['timestamp'], q['open'], q['high'], q['low'], q['close']):
-        if c:
-            d = dt.datetime.fromtimestamp(t, dt.timezone.utc).date()
-            out[d] = (o or c, max(h or c, c), min(l or c, c), c)
+    if sym.endswith('=X'):
+        # Devises : barre datée à 0 h (Londres) ; depuis ~2011 son « close » est le cours du DÉBUT de la journée (= clôture de la
+        # veille), vérifié contre les bougies M5 de MT5. Jour = date de Londres ; clôture = ouverture de la barre suivante (cours à
+        # minuit à Londres, ≈ 2 h après la clôture de New York) ; dernière barre : cours du moment.
+        lon, live = ZoneInfo('Europe/London'), r['meta'].get('regularMarketPrice')
+        for n, (t, o, h, l, c) in enumerate(rows):
+            d = dt.datetime.fromtimestamp(t, lon).date()
+            nxt = rows[n + 1][1] if n + 1 < len(rows) else None
+            cl = nxt if nxt else (live or c)
+            op = o or cl
+            out[d] = (op, max(h or cl, cl, op), min(l or cl, cl, op), cl)
+        return out
+    tz = ZoneInfo(r['meta'].get('exchangeTimezoneName') or 'UTC') if sym.startswith('^') else dt.timezone.utc
+    for t, o, h, l, c in rows:               # indices : date locale de la Bourse (l'ASX est datée 10 h Sydney = la veille en UTC l'été austral)
+        d = dt.datetime.fromtimestamp(t, tz).date()
+        out[d] = (o or c, max(h or c, c), min(l or c, c), c)
     return out
 
 
