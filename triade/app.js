@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 16/11 13:01';
+  var VERSION = 'version du 16/11 21:09';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -324,11 +324,11 @@
     else { cls = 'stop'; icon = 'stop'; title = 'Déplacer le stop'; l2 = (o.to > 0 ? 'Position acheteuse' : 'Position vendeuse') + ' de ' + lots(a) + ' gardée'; }
     var l3 = st ? 'Stop ' + (o.type === 'close' ? '' : '<b>' + pxf(o.code, st.lvl) + '</b> · à ' + st.unit + ' (' + upct(st.pct, 2) + ') du prix') : '';
     if (o.type === 'close') l3 = '';
-    var key = dkey + ':' + o.code, isDone = !!done[key];
+    var key = dkey + ':' + o.code, isDone = !!done[key], isIn = o.type === 'open' || o.type === 'add' || o.type === 'flip';
     return '<div class="ord ' + cls + (isDone ? ' done' : '') + '"><div class="tag">' + ico(icon) + '</div><div class="what">' +
       '<div class="l1">' + esc(title) + ' <span class="sym">' + o.code + '</span></div>' +
       '<div class="l2">' + esc(m.n) + ' · ' + esc(l2) + '</div>' + (l3 ? '<div class="l3">' + l3 + '</div>' : '') + '</div>' +
-      '<button class="check" data-done="' + key + '" aria-label="' + (isDone ? 'Marquer comme non fait' : 'Marquer comme fait') + '" aria-pressed="' + isDone + '">' + ico('check') + '</button></div>';
+      '<button class="check" data-done="' + key + '"' + (isIn ? ' data-in="1"' : '') + ' aria-label="' + (isDone ? 'Marquer comme non fait' : 'Marquer comme fait') + '" aria-pressed="' + isDone + '">' + ico('check') + '</button></div>';
   }
   function renderSoir() {
     var m = S.mom, run = S.run;
@@ -404,6 +404,16 @@
     od.hits.forEach(function (h) {
       notes.push(['warn', 'stop', '<b>' + h.code + ' : stop touché aujourd\'hui.</b> MT5 a fermé la position. ' + (lots[IX[h.code]] ? 'Le soir de révision la relance (voir les ordres).' : 'Elle reste fermée jusqu\'à la prochaine révision (' + longDay(nr.day) + ').')]);
     });
+    var act = lastActivity();
+    if (act && act.gap >= IDLE_WARN) {
+      var inTonight = od.list.some(function (o) { return o.type === 'open' || o.type === 'add' || o.type === 'flip'; }), late = act.gap >= IDLE_CRIT;
+      notes.push([late ? 'crit' : 'warn', 'clock', '<b>Inactivité : ' + act.gap + ' jours sans nouveau trade</b> (dernier le ' + shortDay(act.day) + ', ' + act.src + '). ' +
+        'FundedNext désactive le compte après ' + IDLE_MAX + ' jours sans trade (ici le <b>' + longDay(act.limit) + '</b>). ' +
+        (act.gap >= IDLE_MAX ? '<b>Délai dépassé d\'après les données de l\'appli :</b> vérifie tout de suite sur le tableau de bord FundedNext que le compte est encore actif (un relevé MT5 plus récent ou un ordre non coché peut expliquer l\'écart).'
+          : inTonight ? 'Les ordres d\'ouverture ou de renfort de ce soir remettent le compteur à zéro : coche-les une fois passés.'
+          : late ? 'Passe le prochain ordre d\'ouverture ou de renfort du moteur, même petit. S\'il n\'y en a aucun d\'ici le ' + longDay(act.day + 52) + ', ouvre 0,01 lot dans le sens d\'une position du moteur et referme-le le soir même : un seul trade remet le compteur à zéro.'
+          : 'Le prochain ordre d\'ouverture ou de renfort du moteur remet le compteur à zéro : coche-le une fois passé.')]);
+    }
     if (cfg.phaseSince && dn(cfg.phaseSince) >= day - 7) notes.push(['warn', 'alert', cfg.phase === 'finance'
       ? '<b>Nouveau compte financé :</b> il démarre vide. Ouvrez toutes les positions de l\'onglet Positions avec leurs stops, puis suivez les ordres du soir.'
       : '<b>Nouveau challenge :</b> il démarre vide. Ouvrez toutes les positions de l\'onglet Positions avec leurs stops, puis suivez les ordres du soir.']);
@@ -425,9 +435,9 @@
     var b = e.target.closest('[data-done]');
     if (!b) return;
     var k = b.dataset.done;
-    if (done[k]) delete done[k]; else done[k] = 1;
-    var keep = {}, lim = ds(parisToday() - 40);                       // on oublie les coches de plus de 40 jours
-    Object.keys(done).forEach(function (x) { if (x.slice(0, 10) >= lim) keep[x] = 1; });
+    if (done[k]) delete done[k]; else done[k] = b.dataset.in ? 2 : 1;   // 2 : ordre d'ouverture ou de renfort (compte pour l'inactivité)
+    var keep = {}, lim = ds(parisToday() - 70);                       // on oublie les coches de plus de 70 jours
+    Object.keys(done).forEach(function (x) { if (x.slice(0, 10) >= lim) keep[x] = done[x]; });
     done = keep; store.set('done', done); render();
   });
 
@@ -646,7 +656,7 @@
       '<li>Le moteur est rejoué séance par séance depuis 2008 avec les cours quotidiens de Yahoo (indices au comptant, devises, or et argent en contrats à terme), exactement comme l\'appli calcule les ordres du soir.</li>' +
       '<li>Règle des 3 % respectée chaque soir : stops placés pour que la perte possible de toutes les positions, mesurée depuis le prix d\'entrée, reste sous 2,9 % du compte. Taille gardée entre deux recalages du stop.</li>' +
       '<li>Frais : 0,015 % de chaque montant échangé, plus 0,02 % sur chaque stop touché. Pas de frais de nuit (option Swap-Free). Arrondi des lots non compté.</li>' +
-      '<li>Compte Stellar 1-Step : challenge à +10 % en 2 jours de trading au moins, puis compte financé qui repart du solde de départ. Perte du jour limitée à 3 % et perte maximale à 6 % sous le solde de départ (fixe), vérifiées au plus bas de chaque journée. Retrait tous les 5 jours de bourse, 80 % des gains, prix du challenge remboursé au 3e retrait. Compte cramé : nouveau challenge acheté ' + usd(fee(), 2) + '.</li>' +
+      '<li>Compte Stellar 1-Step : challenge à +10 % en 2 jours de trading au moins, puis compte financé qui repart du solde de départ. Perte du jour limitée à 3 % et perte maximale à 6 % sous le solde de départ (fixe), vérifiées au plus bas de chaque journée. Retrait tous les 5 jours de bourse, 80 % des gains, prix du challenge remboursé au 3e retrait. Compte cramé : nouveau challenge acheté ' + usd(fee(), 2) + '. Compte désactivé après 60 jours sans trade : dans l\'historique depuis 2003, le moteur n\'est jamais resté plus de 49 jours sans ouverture ni renfort (22 jours pendant le challenge).</li>' +
       '<li>Pendant le challenge, le moteur vise 8 % de volatilité au lieu de ' + upct(cfg.vol, 0) + ' (9e lot du labo : challenge réussi en 8 à 11 mois au lieu de 14 à 17, valeur médiane sur 4 ans +28 à +38 %, mais plus de challenges ratés). Les stops et le plafond de 2,9 % restent appliqués partout.</li>' +
       '<li>Le laboratoire (2009-2026) avait oublié les frais de rééquilibrage et laissait le risque dépasser 3 % un soir sur trois : l\'appli corrige les deux, ses chiffres sont donc plus bas et plus réalistes.</li>' +
       '<li>Résultats passés simulés : ils ne garantissent rien pour l\'avenir. Je ne suis pas conseiller financier.</li></ul>';
@@ -1093,6 +1103,25 @@
     return null;
   }
   function realData() { return S.real || (S.real = store.get('real', null)); }
+  /* Inactivité FundedNext : compte désactivé après 60 jours consécutifs sans trade (règle officielle des comptes CFD, nov. 2026).
+     Dernier trade connu = plus récente de : dernière entrée (deal « in ») du relevé MT5 importé, dernier ordre d'ouverture ou de
+     renfort coché « fait » dans Ce soir. Un nouveau compte (changement d'étape) ou un relevé sans trade repart de sa date de début. */
+  var IDLE_MAX = 60, IDLE_WARN = 30, IDLE_CRIT = 45;
+  function lastActivity() {
+    var best = null, put = function (d, src) { if (d === d && (!best || d > best.day)) best = { day: d, src: src }; };
+    Object.keys(done).forEach(function (k) { if (done[k] === 2) put(dn(k.slice(0, 10)), 'ordre coché dans Ce soir'); });
+    var R = realData();
+    if (R && R.deals) {
+      var ins = R.deals.filter(function (d) { return (d.type === 'buy' || d.type === 'sell') && /^(in|entr)/.test(d.dir) && d.t === d.t; });
+      var dep = R.deals.filter(function (d) { return d.type === 'balance' && d.t === d.t; });
+      if (ins.length) put(Math.floor(Math.max.apply(null, ins.map(function (d) { return d.t; })) / DAY), 'relevé MT5');
+      else if (dep.length) put(Math.floor(Math.min.apply(null, dep.map(function (d) { return d.t; })) / DAY), 'début du compte, relevé MT5');
+    }
+    if (cfg.phaseSince) { var s = dn(cfg.phaseSince); if (!best || best.day < s) best = { day: s, src: 'début du ' + (cfg.phase === 'finance' ? 'compte financé' : 'challenge') }; }
+    if (!best) return null;
+    best.gap = Math.max(0, parisToday() - best.day); best.limit = best.day + IDLE_MAX;
+    return best;
+  }
   function renderReel() {
     var R = realData();
     $('r-import').innerHTML = '<div class="card-head"><h2>Importer mon relevé MT5</h2><span class="small">' + (R ? 'importé le ' + new Date(R.at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'aucun relevé') + '</span></div>' +
@@ -1135,6 +1164,12 @@
       meter('Marge avant le seuil de perte (' + usd(floor) + ')', eq - floor, init * 0.06, usd(eq - floor), eq - floor < init * 0.015, true) +
       meter('Perte du jour (' + (lastDay !== null ? shortDay(lastDay) : '—') + ', limite 3 %)', Math.max(0, -dayPnl), init * 0.03, (dayPnl < 0 ? usd(-dayPnl) : '0 $') + ' sur ' + usd(init * 0.03), -dayPnl > init * 0.025) +
       meter('Risque aux stops (plafond 3 %)', risk, init * 0.03, usd(risk) + ' · ' + upct(risk / init, 2), risk > init * 0.03 || nostop.length) +
+      (function () {
+        var a = lastActivity(); if (!a) return '';
+        var cls = a.gap >= IDLE_CRIT ? ' crit' : a.gap >= IDLE_WARN ? ' warn' : ' good';
+        return '<div class="rm"><div class="rm-h"><span>Jours sans nouveau trade (limite ' + IDLE_MAX + ')</span><b class="' + (a.gap >= IDLE_CRIT ? 'neg' : '') + '">' + a.gap + ' j · limite ' + (a.gap >= IDLE_MAX ? 'dépassée le ' : 'le ') + shortDay(a.limit) + '</b></div>' +
+          '<div class="bar' + cls + '"><i style="width:' + Math.min(100, a.gap / IDLE_MAX * 100).toFixed(0) + '%"></i></div><p class="small" style="margin:4px 0 0">Dernier trade le ' + shortDay(a.day) + ' (' + a.src + ').</p></div>';
+      })() +
       (phase === 'challenge' ? meter('Objectif du challenge (+10 %)', Math.max(0, bal - init), init * 0.10, pct((bal - init) / init) + ' sur +10 %', false)
         : '<div class="rm"><div class="rm-h"><span>Retrait possible (80 % des gains)</span><b class="pos">' + usd(Math.max(0, bal - init) * 0.8) + '</b></div></div>') +
       (nostop.length ? '<ul class="notes" style="margin-top:10px"><li class="crit">' + ico('alert') + '<span><b>Position sans stop : ' + esc(nostop.join(', ')) + '.</b> FundedNext la compte comme un risque de 100 % : place un stop tout de suite.</span></li></ul>' : '') +
