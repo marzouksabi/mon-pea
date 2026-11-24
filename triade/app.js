@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 24/11 22:47';
+  var VERSION = 'version du 24/11 23:21';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -42,7 +42,11 @@
     sync: '<path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 20v-4h-4"/>',
     wave: '<path d="M3 12c2.5-5 5-5 7.5 0s5 5 7.5 0"/><path d="M18 12h3"/>',
     flat: '<circle cx="12" cy="12" r="9"/><path d="M8 12h8"/>',
-    flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>'
+    flag: '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>',
+    screen: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8"/><path d="M12 16v4"/>',
+    phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18h2"/>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/>',
+    chev: '<path d="m9 6 6 6-6 6"/>'
   };
   var ico = function (n, cls) { return '<svg class="ico' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[n] || '') + '</svg>'; };
   var store = {
@@ -312,24 +316,89 @@
     var d = day; for (var i = 0; i < k; i++) d = nextTrading(d);
     return { k: k, day: d };
   }
+  /* ---------- guide MT5 : les gestes exacts dans MetaTrader 5, sur ordinateur ou sur téléphone ---------- */
+  var dev = store.get('dev', null) || (window.matchMedia && matchMedia('(pointer:coarse)').matches ? 'tel' : 'pc');
+  var ui = function (fr, en) { return '<b>' + fr + '</b>' + (en ? '<span class="en">' + en + '</span>' : ''); };
+  var rawPx = function (code, v) { var m = MK[code]; return v.toFixed(m.f === 'idx' ? (v < 1000 ? 2 : 1) : m.d); };
+  var lotTxt = function (v) { return nf(Math.abs(v), cfg.step < 0.1 ? 2 : 1); };
+  var pill = function (txt, raw) { return '<button type="button" class="val" data-copy="' + raw + '" aria-label="Copier ' + raw + '">' + txt + ico('copy') + '</button>'; };
+  var lotPill = function (v) { return pill(lotTxt(v), Math.abs(v).toFixed(cfg.step < 0.1 ? 2 : 1)); };
+  var slPill = function (code, v) { return pill(pxf(code, v), rawPx(code, v)); };
+  /* g : { kind : open | close | cut | add | flip | stop | hold, code, from, to (lots signés), sl (niveau du stop) } */
+  function mt5Steps(g) {
+    var pc = dev === 'pc', c = '<b>' + g.code + '</b>', a = Math.abs(g.to), b = Math.abs(g.from), d = roundStep(Math.abs(a - b));
+    var line = '<b class="ln">' + g.code + ' ' + ((g.from || g.to) > 0 ? 'buy' : 'sell') + '</b>', slp = g.sl ? slPill(g.code, g.sl) : '';
+    var trade = 'Onglet ' + ui('Trade') + (pc ? ' (Ctrl+T)' : '');
+    var order = function (vol, buy, label) {
+      return pc ? ['Touche <kbd>F9</kbd> ' + ui('Nouvel ordre', 'New Order') + ', symbole ' + c + '.', (label || 'Volume') + ' ' + lotPill(vol) + ' · Stop Loss ' + slp + '.', 'Bouton ' + (buy ? 'bleu ' + ui('Acheter', 'Buy') : 'rouge ' + ui('Vendre', 'Sell')) + '.']
+        : ['Onglet ' + ui('Cotations', 'Quotes') + ' : touche ' + c + ', puis ' + ui('Trader', 'Trade') + '.', (label || 'Volume') + ' ' + lotPill(vol) + ' · S/L ' + slp + '.', ui(buy ? 'Acheter' : 'Vendre', buy ? 'Buy by Market' : 'Sell by Market') + '.'];
+    };
+    var modify = function (where) {
+      return pc ? (where || 'Clic droit sur la ligne ') + line + ' → ' + ui('Modifier', 'Modify') + ' : Stop Loss ' + slp + '.'
+        : (where || 'Appui long sur ') + line + ' → ' + ui('Modifier', 'Modify position') + ' : S/L ' + slp + '.';
+    };
+    var closeAll = pc ? trade + ' : croix <b>×</b> au bout de la ligne ' + line + '.' : trade + ' : appui long sur ' + line + ' → ' + ui('Clôturer', 'Close position') + ', puis le bouton jaune.';
+    var opp = g.from > 0 ? 'Vendre' : 'Acheter';
+    if (g.kind === 'open') return { steps: order(a, g.to > 0) };
+    if (g.kind === 'close') return { steps: [closeAll], tip: 'Plusieurs lignes ' + g.code + ' ? Ferme-les toutes.', warn: 'Ne passe pas d\'ordre ' + opp + ' pour fermer : sur FundedNext (compte en couverture), il ouvrirait une position inverse à côté.' };
+    if (g.kind === 'cut') return {
+      steps: pc ? [trade + ' : double-clic sur la ligne ' + line + '.', 'Volume ' + lotPill(d) + ' : la part à fermer, pas celle qui reste (' + lotTxt(a) + ').', 'Bouton jaune ' + ui('Clôturer', 'Close by Market') + '.', modify('Puis clic droit sur la ligne ')]
+        : [trade + ' : appui long sur ' + line + ' → ' + ui('Clôturer', 'Close position') + '.', 'Volume ' + lotPill(d) + ' : la part à fermer (il reste ' + lotTxt(a) + '), puis le bouton jaune.', modify('Puis appui long sur ')],
+      warn: 'Ne passe pas d\'ordre ' + opp + ' : sur FundedNext (compte en couverture), il ouvrirait une position inverse à côté au lieu d\'alléger.' };
+    if (g.kind === 'add') return { steps: order(d, g.to > 0, 'Volume (le supplément)').concat([modify(pc ? 'Ancienne ligne : clic droit sur ' : 'Ancienne ligne : appui long sur ')]), tip: 'MT5 affiche deux lignes ' + g.code + ' : c\'est normal, elles gardent le même stop.' };
+    if (g.kind === 'flip') return { steps: [closeAll].concat(order(a, g.to > 0)), warn: 'Ferme d\'abord l\'ancienne ligne : un ordre inverse seul la laisserait ouverte à côté.' };
+    if (g.kind === 'stop') return { steps: [pc ? trade + ' : clic droit sur la ligne ' + line + ' → ' + ui('Modifier', 'Modify') + '.' : trade + ' : appui long sur ' + line + ' → ' + ui('Modifier', 'Modify position') + '.', (pc ? 'Stop Loss ' : 'S/L ') + slp + ', puis ' + ui('Modifier', 'Modify') + '.'],
+      tip: 'Plusieurs lignes ' + g.code + ' ? Le même stop sur chacune.' + (pc ? ' Tu peux aussi faire glisser la ligne du stop sur le graphique.' : '') };
+    return { lead: 'Position absente de ton MT5 (nouveau compte) ? Pour l\'ouvrir :', steps: order(a, g.to > 0) };
+  }
+  function mt5Guide(g, sum, key) {
+    var s = mt5Steps(g);
+    return '<details class="mt5" data-k="' + esc(key) + '"><summary>' + ico('screen') + '<span class="t">Sur MT5</span><span class="s">' + sum + '</span>' + ico('chev', 'chev') + '</summary>' +
+      '<div class="mt5-b"><div class="seg dev" role="group" aria-label="Appareil"><button type="button" data-dev="pc" aria-pressed="' + (dev === 'pc') + '">' + ico('screen') + 'Ordinateur</button><button type="button" data-dev="tel" aria-pressed="' + (dev === 'tel') + '">' + ico('phone') + 'Téléphone</button></div>' +
+      (s.lead ? '<p class="lead5">' + s.lead + '</p>' : '') + '<ol class="st5">' + s.steps.map(function (x) { return '<li><span>' + x + '</span></li>'; }).join('') + '</ol>' +
+      (s.warn ? '<p class="w5">' + ico('alert') + '<span>' + s.warn + '</span></p>' : '') + (s.tip ? '<p class="t5">' + s.tip + '</p>' : '') + '</div></details>';
+  }
+  /* barre des lots : avant → après */
+  function lotBar(type, b, a) {
+    var mx = Math.max(a, b) || 1, k = Math.min(a, b) / mx * 100, ch = Math.abs(a - b) / mx * 100;
+    return '<div class="lv ' + type + '"><span>' + lotTxt(b) + '</span><div class="lvb"><i class="k" style="width:' + k.toFixed(1) + '%"></i><i class="c" style="width:' + ch.toFixed(1) + '%"></i></div><span><b>' + lotTxt(a) + '</b> lot' + (a >= 2 ? 's' : '') + '</span></div>';
+  }
+  document.addEventListener('click', function (e) {
+    var c = e.target.closest('[data-copy]');
+    if (c) {
+      e.preventDefault(); e.stopPropagation();
+      var v = c.dataset.copy, ok = function () { c.classList.add('ok'); setTimeout(function () { c.classList.remove('ok'); }, 900); toast('Copié : ' + v); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(ok, function () { toast(v); }); else toast(v);
+      return;
+    }
+    var d = e.target.closest('[data-dev]');
+    if (d) {
+      dev = d.dataset.dev; store.set('dev', dev);
+      var open = [].map.call(document.querySelectorAll('details.mt5[open]'), function (x) { return x.dataset.k; });
+      render();
+      open.forEach(function (k) { [].forEach.call(document.querySelectorAll('details.mt5'), function (x) { if (x.dataset.k === k) x.open = true; }); });
+    }
+  });
+
   function orderCard(run, t, o, dkey) {
-    var m = MK[o.code], j = o.j, st = run.HELD[j][t] ? stopOf(run, j, t) : null, a = Math.abs(o.to), b = Math.abs(o.from);
-    var lots = function (v) { return nf(v, cfg.step < 0.1 ? 2 : 1) + ' lot' + (v >= 2 ? 's' : ''); };
-    var dir = o.to > 0 || (!o.to && o.from < 0) ? 'Achat' : 'Vente';
-    var cls, icon, title, l2;
-    if (o.type === 'open') { cls = o.to > 0 ? 'buy' : 'sell'; icon = cls; title = (o.to > 0 ? 'Acheter ' : 'Vendre ') + lots(a); l2 = 'Nouvelle position ' + (o.to > 0 ? 'acheteuse' : 'vendeuse'); }
-    else if (o.type === 'close') { cls = 'close'; icon = 'close'; title = 'Fermer la position'; l2 = (o.from > 0 ? 'Position acheteuse' : 'Position vendeuse') + ' de ' + lots(b) + ' : croix sur la ligne dans MT5'; }
-    else if (o.type === 'flip') { cls = o.to > 0 ? 'buy' : 'sell'; icon = 'flip'; title = 'Retourner : ' + (o.to > 0 ? 'acheteur ' : 'vendeur ') + lots(a); l2 = 'Fermer les ' + lots(b) + ' ' + (o.from > 0 ? 'achetés' : 'vendus') + ', puis ' + (o.to > 0 ? 'acheter ' : 'vendre ') + lots(a); }
-    else if (o.type === 'add') { cls = o.to > 0 ? 'buy' : 'sell'; icon = cls; title = (o.to > 0 ? 'Acheter ' : 'Vendre ') + lots(roundStep(a - b)) + ' de plus'; l2 = 'Position portée de ' + lots(b) + ' à ' + lots(a); }
-    else if (o.type === 'cut') { cls = 'close'; icon = 'close'; title = 'Alléger de ' + lots(roundStep(b - a)); l2 = 'Fermer une partie : position ramenée de ' + lots(b) + ' à ' + lots(a); }
-    else { cls = 'stop'; icon = 'stop'; title = 'Déplacer le stop'; l2 = (o.to > 0 ? 'Position acheteuse' : 'Position vendeuse') + ' de ' + lots(a) + ' gardée'; }
-    var l3 = st ? 'Stop ' + (o.type === 'close' ? '' : '<b>' + pxf(o.code, st.lvl) + '</b> · à ' + st.unit + ' (' + upct(st.pct, 2) + ') du prix') : '';
-    if (o.type === 'close') l3 = '';
+    var m = MK[o.code], j = o.j, st = run.HELD[j][t] ? stopOf(run, j, t) : null, a = Math.abs(o.to), b = Math.abs(o.from), d = roundStep(Math.abs(a - b));
+    var lots = function (v) { return lotTxt(v) + ' lot' + (v >= 2 ? 's' : ''); };
+    var cls, icon, title, l2, sum;
+    if (o.type === 'open') { cls = o.to > 0 ? 'buy' : 'sell'; icon = cls; title = (o.to > 0 ? 'Acheter ' : 'Vendre ') + lots(a); l2 = 'Nouvelle position ' + (o.to > 0 ? 'acheteuse' : 'vendeuse'); sum = 'nouvelle ligne de ' + lotTxt(a) + ' avec son stop'; }
+    else if (o.type === 'close') { cls = 'close'; icon = 'close'; title = 'Fermer la position'; l2 = (o.from > 0 ? 'Position acheteuse' : 'Position vendeuse') + ' de ' + lots(b); sum = 'la croix sur la ligne, rien d\'autre'; }
+    else if (o.type === 'flip') { cls = o.to > 0 ? 'buy' : 'sell'; icon = 'flip'; title = 'Retourner : ' + (o.to > 0 ? 'acheteur ' : 'vendeur ') + lots(a); l2 = 'Fermer les ' + lots(b) + ' ' + (o.from > 0 ? 'achetés' : 'vendus') + ', puis ' + (o.to > 0 ? 'acheter ' : 'vendre ') + lots(a); sum = 'fermer, puis ' + (o.to > 0 ? 'acheter ' : 'vendre ') + lotTxt(a); }
+    else if (o.type === 'add') { cls = o.to > 0 ? 'buy' : 'sell'; icon = cls; title = (o.to > 0 ? 'Acheter ' : 'Vendre ') + lots(d) + ' de plus'; l2 = 'Position portée de ' + lots(b) + ' à ' + lots(a); sum = 'nouvelle ligne de ' + lotTxt(d) + ', même stop sur les deux'; }
+    else if (o.type === 'cut') { cls = 'close'; icon = 'close'; title = 'Alléger de ' + lots(d); l2 = 'Position ramenée de ' + lots(b) + ' à ' + lots(a); sum = 'fermer ' + lotTxt(d) + ' sur la ligne existante'; }
+    else { cls = 'stop'; icon = 'stop'; title = 'Déplacer le stop'; l2 = (o.to > 0 ? 'Position acheteuse' : 'Position vendeuse') + ' de ' + lots(a) + ' gardée'; sum = 'S/L → ' + (st ? pxf(o.code, st.lvl) : ''); }
+    var viz = o.type === 'stop' ? '' : o.type === 'flip' ? '<div class="flipv"><span class="side ' + (o.from > 0 ? 'l' : 's') + '">' + (o.from > 0 ? 'Achat ' : 'Vente ') + lotTxt(b) + '</span>' + ico('chev') + '<span class="side ' + (o.to > 0 ? 'l' : 's') + '">' + (o.to > 0 ? 'Achat ' : 'Vente ') + lotTxt(a) + '</span></div>' : lotBar(o.type, b, a);
+    var l3 = st && o.type !== 'close' ? '<div class="l3">Stop ' + slPill(o.code, st.lvl) + '<span>à ' + st.unit + ' (' + upct(st.pct, 2) + ') du cours</span></div>' : '';
     var key = dkey + ':' + o.code, isDone = !!done[key], isIn = o.type === 'open' || o.type === 'add' || o.type === 'flip';
+    var g = { kind: o.type, code: o.code, from: o.from, to: o.to, sl: st ? st.lvl : null };
     return '<div class="ord ' + cls + (isDone ? ' done' : '') + '"><div class="tag">' + ico(icon) + '</div><div class="what">' +
       '<div class="l1">' + esc(title) + ' <span class="sym">' + o.code + '</span></div>' +
-      '<div class="l2">' + esc(m.n) + ' · ' + esc(l2) + '</div>' + (l3 ? '<div class="l3">' + l3 + '</div>' : '') + '</div>' +
-      '<button class="check" data-done="' + key + '"' + (isIn ? ' data-in="1"' : '') + ' aria-label="' + (isDone ? 'Marquer comme non fait' : 'Marquer comme fait') + '" aria-pressed="' + isDone + '">' + ico('check') + '</button></div>';
+      '<div class="l2">' + esc(m.n) + ' · ' + esc(l2) + '</div>' + viz + l3 + '</div>' +
+      '<button class="check" data-done="' + key + '"' + (isIn ? ' data-in="1"' : '') + ' aria-label="' + (isDone ? 'Marquer comme non fait' : 'Marquer comme fait') + '" aria-pressed="' + isDone + '">' + ico('check') + '</button>' +
+      mt5Guide(g, sum, 'o:' + key) + '</div>';
   }
   function renderSoir() {
     var m = S.mom, run = S.run;
@@ -482,9 +551,20 @@
     var SIG = { open: ['Nouvelle ce soir', 'l'], add: ['Augmentée ce soir', 'l'], cut: ['Allégée ce soir', 'f'], flip: ['Retournée ce soir', 'l'], close: ['Fermée ce soir', 's'] };
     var pcard = function (x, tag, tcls) {
       if (x.flat) return '<div class="pc"><div class="h"><b>' + x.code + ' <span class="small">' + esc(MK[x.code].n) + '</span></b><span class="side f">Stoppée</span></div><div class="small" style="margin-top:6px">' + flatTxt(x) + '</div></div>';
+      var j = IX[x.code], cur = run.C[j][t], e = run.ENTRY[j][t], dir = x.v > 0 ? 1 : -1;
+      var slr = dir > 0 ? run.REF[j][t] * (1 - run.DIST[j][t]) : run.REF[j][t] * (1 + run.DIST[j][t]);   // stop au cours du marché suivi (contrat à terme pour l'or et l'argent)
+      var far = function (pz) { return dir * (pz - slr); }, top = Math.max(far(cur), far(e), 1e-9) * 1.15;
+      var pc = Math.max(0, Math.min(100, far(cur) / top * 100)), pe = Math.max(0, Math.min(100, far(e) / top * 100)), up = dir * (cur - e) >= 0;
+      var held = x.tr ? t - x.tr.t0 : 0, move = mvs[x.code];
+      var gauge = '<div class="sg" aria-hidden="true"><div class="sg-t"><i class="sg-f ' + (up ? 'up' : 'dn') + '" style="width:' + pc.toFixed(1) + '%"></i><i class="sg-e" style="left:' + pe.toFixed(1) + '%"></i><i class="sg-c ' + (up ? 'up' : 'dn') + '" style="left:' + pc.toFixed(1) + '%"></i></div>' +
+        '<div class="sg-l"><span>stop</span>' + (pe >= 16 ? '<span style="left:' + pe.toFixed(1) + '%;transform:translateX(' + (pe > 84 ? '-100%' : '-50%') + ')">entrée</span>' : '') + '</div></div>';
+      var g = { kind: move ? 'stop' : 'hold', code: x.code, from: x.v, to: x.v, sl: x.st.lvl };
       return '<div class="pc' + (tag ? ' sig' : '') + '"><div class="h"><span><b>' + x.code + '</b> <span class="small">' + esc(MK[x.code].n) + '</span></span><span class="side ' + (x.v > 0 ? 'l">Achat ' : 's">Vente ') + l2(x.v) + '</span></div>' +
-        (tag ? '<div class="ptag ' + (tcls || '') + '">' + tag + '</div>' : '') +
-        '<div class="g"><div><span>Depuis</span><b>' + since(x) + '</b></div><div><span>Stop</span><b>' + pxf(x.code, x.st.lvl) + '</b></div><div><span>Risque</span><b>' + usd(x.risk) + '</b></div><div><span>Latent</span><b class="' + (x.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.pnl) + '</b></div></div></div>';
+        (tag ? '<div class="ptag ' + (tcls || '') + '">' + tag + '</div>' : '') + gauge +
+        '<div class="g"><div><span>Entrée</span><b>' + pxf(x.code, e) + '</b></div><div><span>Stop</span>' + slPill(x.code, x.st.lvl) + '</div>' +
+        '<div><span>Risque</span><b>' + usd(x.risk) + '</b></div><div><span>Latent</span><b class="' + (x.pnl >= 0 ? 'pos' : 'neg') + '">' + sUsd(x.pnl) + '</b></div></div>' +
+        '<div class="pc-f">Cours à <b class="' + (up ? 'pos' : 'neg') + '">' + upct(Math.abs(cur / slr - 1), 1) + '</b> du stop · depuis le ' + since(x) + (held ? ' (' + held + ' séance' + (held > 1 ? 's' : '') + ')' : '') + ' · stop replacé le ' + shortDay(nrv.day) + '</div>' +
+        mt5Guide(g, move ? 'nouveau S/L ' + pxf(x.code, x.st.lvl) + ' ce soir' : x.code + ' ' + (x.v > 0 ? 'buy ' : 'sell ') + l2(x.v) + ' · S/L ' + pxf(x.code, x.st.lvl), 'p:' + x.code) + '</div>';
     };
     var live = rows.filter(function (x) { return !x.flat; }), sigCards = [], keep = [];
     live.forEach(function (x) { if (sig[x.code]) sigCards.push(pcard(x, SIG[sig[x.code].type][0], SIG[sig[x.code].type][1])); else keep.push(x); });
@@ -798,39 +878,108 @@
     run._trades = out;
     return out;
   }
-  var WHY = { stop: 'Stop touché', fin: 'Fermée par le moteur', flip: 'Retournée', live: 'En cours' };
-  function maxLots(run, tr) {                                         // plus gros lot tenu pendant le trade sur ce compte (0 : trop petit, jamais pris)
-    if (tr._mxRef && tr._mxRef === run._lots) return tr._mx;            // recalculé si les lots changent (taille du compte, pas, contrats)
-    var mx = 0, end = tr.why === 'live' ? tr.t1 : tr.t1 - 1;
-    for (var t = tr.t0; t <= end; t++) mx = Math.max(mx, Math.abs(lotsAt(run, t)[tr.j]));
-    tr._mx = mx; tr._mxRef = run._lots;
-    return mx;
+  function stopHits(run) {                                            // stops touchés, par marché et par séance
+    if (run._hitMap) return run._hitMap;
+    var h = {}; run.events.forEach(function (e) { if (e.type === 'stop') (h[e.j] = h[e.j] || {})[e.t] = e; });
+    return (run._hitMap = h);
   }
-  /* une ligne de trade dépliable ; size : taille du compte pour les montants et les lots ; tag : étiquette en plus (étape du compte) */
+  /* le trade en lots sur ce compte, comme MT5 le montre : plus gros lot tenu (0 : trop petit, jamais pris) et résultat en dollars,
+     frais estimés compris (0,015 % de chaque montant échangé, 0,02 % de plus sur un stop touché) */
+  function lotStats(run, tr) {
+    lotsAt(run, tr.t0);
+    if (tr._ls && tr._lsRef === run._lots) return tr._ls;              // recalculé si les lots changent (taille du compte, pas, contrats)
+    var j = tr.j, code = tr.code, hits = stopHits(run), prev = 0, mx = 0, pnl = 0, cost = 0, live = tr.why === 'live';
+    for (var t = tr.t0; t <= tr.t1; t++) {
+      var h = hits[j] && hits[j][t];
+      if (t > tr.t0 && prev) {
+        pnl += prev * vpl(run, code, t - 1) / run.C[j][t - 1] * ((h ? h.px : run.C[j][t]) - run.C[j][t - 1]);
+        if (h) { cost += 0.0002 * Math.abs(prev) * vpl(run, code, t - 1); prev = 0; }
+      }
+      var L = t === tr.t1 && !live ? 0 : lotsAt(run, t)[j];
+      if (L !== prev) cost += COST * Math.abs(L - prev) * vpl(run, code, t);
+      mx = Math.max(mx, Math.abs(L)); prev = L;
+    }
+    tr._ls = { mx: mx, pnl: pnl - cost, cost: cost }; tr._lsRef = run._lots;
+    return tr._ls;
+  }
+  function maxLots(run, tr) { return lotStats(run, tr).mx; }
+  var tradeAmt = function (run, tr, size) { return size === cfg.size ? lotStats(run, tr).pnl : tr.net * size; };
+  var WHY = { stop: 'Stop touché', fin: 'Fermée par le moteur', flip: 'Retournée', live: 'En cours' };
+  var TRREG = {}, trSeq = 0;
+  /* une ligne de trade dépliable ; size : taille du compte pour les montants ; tag : étiquette en plus (étape du compte) */
   function tradeRow(tr, run, size, tag) {
-    var days = S.D.days, d0 = days[tr.t0], d1 = days[tr.t1], ns = tr.t1 - tr.t0, cls = tr.side > 0 ? 'buy' : 'sell', amt = tr.net * size;
-    var eng = tr.eng.map(Math.abs), es = eng[0] + eng[1] + eng[2] || 1;
-    var engTxt = ['Repli', 'Tendance', 'Indices'].map(function (nm, k) { return eng[k] / es >= 0.005 ? nm + ' ' + Math.round(eng[k] / es * 100) + ' %' : null; }).filter(Boolean).join(' · ');
-    var stp = tr.side > 0 ? tr.ref * (1 - tr.dist) : tr.ref * (1 + tr.dist), mv = tr.px1 / tr.px0 - 1;
-    var lv = size === cfg.size ? Math.abs(lotsAt(run, tr.t0)[tr.j]) : roundStep(tr.h0 * size / vpl(run, tr.code, tr.t0)), mx = size === cfg.size ? maxLots(run, tr) : lv;
-    var lots = lv ? nf(lv, cfg.step < 0.1 ? 2 : 1) + ' lot' + (lv >= 2 ? 's' : '') : mx ? 'trop petit au départ, puis ' + nf(mx, cfg.step < 0.1 ? 2 : 1) + ' lot' + (mx >= 2 ? 's' : '') : 'sous ' + nf(cfg.step / 2, 3) + ' lot : non pris';
-    var live = tr.why === 'live';
-    return '<details class="tr ' + cls + '"><summary><span class="i">' + ico(cls) + '</span><span class="w"><b>' + tr.code + '</b> <span class="small">' + (tr.side > 0 ? 'Achat' : 'Vente') + '</span>' +
+    var days = S.D.days, d0 = days[tr.t0], d1 = days[tr.t1], ns = tr.t1 - tr.t0, cls = tr.side > 0 ? 'buy' : 'sell', live = tr.why === 'live', same = size === cfg.size;
+    var lv = same ? Math.abs(lotsAt(run, tr.t0)[tr.j]) : roundStep(tr.h0 * size / vpl(run, tr.code, tr.t0)), mx = same ? maxLots(run, tr) : lv, amt = tradeAmt(run, tr, size), off = !mx;
+    var id = ++trSeq; TRREG[id] = { tr: tr, run: run, size: size };
+    return '<details class="tr ' + cls + (off ? ' off' : '') + '" data-tr="' + id + '"><summary><span class="i">' + ico(cls) + '</span><span class="w"><b>' + tr.code + '</b> <span class="small">' + (tr.side > 0 ? 'Achat' : 'Vente') + (mx ? ' ' + lotTxt(mx) : '') + '</span>' +
       '<span class="tag2' + (tr.why === 'stop' ? ' stop' : live ? ' live' : '') + '">' + WHY[tr.why] + '</span>' + (tag ? '<span class="tag2">' + tag + '</span>' : '') +
       (lv ? '' : mx ? '<span class="tag2 off">Trop petit au départ</span>' : '<span class="tag2 off">Trop petit : non pris</span>') +
       '<small>' + shortDay(d0) + (yearOf(d0) !== yearOf(d1) || live ? ' ' + yearOf(d0) : '') + ' → ' + (live ? 'en cours' : shortDay(d1) + ' ' + yearOf(d1)) + ' · ' + ns + ' séance' + (ns > 1 ? 's' : '') + '</small></span>' +
-      '<span class="r"><b class="' + (amt >= 0 ? 'pos' : 'neg') + '">' + sUsd(amt) + '</b><small>' + pct(tr.net, 2) + '</small></span></summary>' +
-      '<div class="td"><div><span>Entrée · ' + fullDay(d0) + '</span><b>' + pxf(tr.code, tr.px0) + '</b></div>' +
-      '<div><span>' + (live ? 'Dernier cours' : 'Sortie · ' + fullDay(d1)) + '</span><b>' + pxf(tr.code, tr.px1) + '</b></div>' +
-      '<div><span>Lots à l\'entrée (compte ' + nf(size / 1000) + 'k)</span><b>' + lots + '</b></div>' +
-      '<div><span>Stop de départ</span><b>' + pxf(tr.code, stp) + ' (' + upct(tr.dist, 2) + ')</b></div>' +
-      '<div><span>Taille</span><b>' + upct(tr.h0, 0) + ' du compte' + (tr.max > tr.h0 * 1.01 ? ', jusqu\'à ' + upct(tr.max, 0) : '') + '</b></div>' +
-      '<div><span>Ajustements de taille</span><b>' + tr.adj + '</b></div>' +
-      '<div><span>Variation du prix</span><b class="' + (mv * tr.side >= 0 ? 'pos' : 'neg') + '">' + pct(mv, 2) + '</b></div>' +
-      '<div><span>Frais estimés</span><b>' + usd(tr.cost * size, 2) + '</b></div>' +
-      '<div class="full"><span>D\'où vient la position (' + esc(MK[tr.code].n) + ')</span><b>' + engTxt + '</b><div class="eng">' +
-      ['var(--e1)', 'var(--e2)', 'var(--e3)'].map(function (c, k) { return '<i style="width:' + (eng[k] / es * 100).toFixed(1) + '%;background:' + c + '"></i>'; }).join('') + '</div></div></div></details>';
+      '<span class="r"><b class="' + (off ? '' : amt >= 0 ? 'pos' : 'neg') + '">' + (off ? '—' : sUsd(amt)) + '</b><small>' + (off ? 'non pris' : pct(amt / size, 2)) + '</small></span></summary><div class="td-x"></div></details>';
   }
+  /* le détail d'un trade, construit à l'ouverture : graphique cours et stop, ordres passés sur MT5, chiffres */
+  function tradeDetail(tr, run, size) {
+    var days = S.D.days, j = tr.j, code = tr.code, live = tr.why === 'live', same = size === cfg.size, hits = stopHits(run);
+    // ordres sur MT5 (taille de ce compte)
+    var ev = [];
+    if (same) for (var t = tr.t0; t <= tr.t1; t++) {
+      var od = ordersAt(run, t), o = od.list.filter(function (x) { return x.code === code; })[0];
+      if (t === tr.t1 && !live) {
+        if (tr.why === 'stop' && hits[j] && hits[j][t]) { if (lotsAt(run, t - 1)[j]) ev.push({ t: t, k: 'hit', txt: 'Stop touché', px: hits[j][t].px }); }
+        else if (o && (o.type === 'close' || o.type === 'flip' || o.type === 'cut')) ev.push({ t: t, k: 'close', txt: 'Fermeture ' + lotTxt(o.from) + ' lot', px: run.C[j][t] });
+        continue;
+      }
+      if (!o) continue;
+      var st = run.HELD[j][t] ? stopOf(run, j, t) : null, ty = o.type === 'flip' ? 'open' : o.type;
+      var txt = { open: 'Ouverture ' + lotTxt(o.to) + ' lot', add: 'Renfort +' + lotTxt(roundStep(Math.abs(o.to) - Math.abs(o.from))) + ' → ' + lotTxt(o.to), cut: 'Allègement −' + lotTxt(roundStep(Math.abs(o.from) - Math.abs(o.to))) + ' → ' + lotTxt(o.to),
+        stop: 'Stop déplacé', close: 'Fermée : taille sous ' + nf(cfg.step / 2, 3) + ' lot' }[ty];
+      ev.push({ t: t, k: ty, txt: txt, px: run.C[j][t], sl: st && ty !== 'close' ? st.lvl : null });
+    }
+    // graphique : cours de clôture, stop en pointillés, entrée, sortie et ordres
+    var a = Math.max(0, tr.t0 - 4), z = tr.t1, W = 320, H = 104, P = [], SL = [];
+    for (var k = a; k <= z; k++) {
+      P.push(run.C[j][k]);
+      var hh = run.HELD[j][k], ok = k >= tr.t0 && (k < tr.t1 || live) && hh && run.REF[j][k] === run.REF[j][k];
+      SL.push(ok ? (hh > 0 ? run.REF[j][k] * (1 - run.DIST[j][k]) : run.REF[j][k] * (1 + run.DIST[j][k])) : null);
+    }
+    var vals = P.concat(SL.filter(function (v) { return v !== null; })).concat([tr.px1]), lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), pd = (hi - lo) * 0.1 || hi * 0.005;
+    lo -= pd; hi += pd;
+    var X = function (q) { return (8 + (q - a) / Math.max(1, z - a) * (W - 16)).toFixed(1); }, Yv = function (v) { return (8 + (hi - v) / (hi - lo) * (H - 16)).toFixed(1); };
+    var pl = P.map(function (v, q) { return (q ? 'L' : 'M') + X(a + q) + ' ' + Yv(v); }).join(''), sp = '', on = false;
+    SL.forEach(function (v, q) { if (v === null) { on = false; return; } sp += (on ? 'L' : 'M') + X(a + q) + ' ' + Yv(v); if (q + 1 < SL.length && SL[q + 1] !== null) sp += 'L' + X(a + q + 1) + ' ' + Yv(v); on = true; });
+    var dots = ev.filter(function (x) { return x.k === 'add' || x.k === 'cut'; }).map(function (x) { return '<circle class="o" cx="' + X(x.t) + '" cy="' + Yv(run.C[j][x.t]) + '" r="3"/>'; }).join('');
+    var good = tr.side * (tr.px1 - tr.px0) >= 0;
+    var chart = '<svg class="tch" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Cours de ' + code + ' et stop pendant le trade">' +
+      '<path class="sl" d="' + sp + '"/><path class="px" d="' + pl + '"/>' + dots +
+      '<circle class="in" cx="' + X(tr.t0) + '" cy="' + Yv(tr.px0) + '" r="4"/>' + (live ? '' : '<circle class="out ' + (good ? 'g' : 'b') + '" cx="' + X(tr.t1) + '" cy="' + Yv(tr.px1) + '" r="4"/>') + '</svg>' +
+      '<div class="legend tl"><span><i style="background:var(--accent)"></i>cours</span><span><i class="dash"></i>stop</span><span><i class="dot" style="background:var(--ink)"></i>entrée</span>' + (live ? '' : '<span><i class="dot" style="background:var(' + (good ? '--good' : '--crit') + ')"></i>sortie</span>') + '</div>';
+    // journal des ordres (les longs trades gardent le début et la fin)
+    var rowsEv = ev.length > 9 ? ev.slice(0, 4).concat([{ more: ev.length - 8 }]).concat(ev.slice(-4)) : ev;
+    var TL = { open: 'buy', add: 'buy', cut: 'close', close: 'close', stop: 'stop', hit: 'stop' };
+    var tl = !same ? '<p class="muted">Ordres détaillés pour la taille de ton compte (' + nf(cfg.size) + ' $) seulement.</p>'
+      : ev.length ? '<ol class="tlog">' + rowsEv.map(function (x) {
+        if (x.more) return '<li class="more"><span></span><span>… ' + x.more + ' autre' + (x.more > 1 ? 's' : '') + ' ordre' + (x.more > 1 ? 's' : '') + ' (surtout des stops déplacés)</span><span></span></li>';
+        return '<li class="' + x.k + '"><span class="d">' + shortDay(days[x.t]) + '</span><span class="x">' + ico(x.k === 'open' || x.k === 'add' ? (tr.side > 0 ? 'buy' : 'sell') : TL[x.k]) + x.txt + '</span><span class="p">' + pxf(code, x.px) + (x.sl ? '<small>S/L ' + pxf(code, x.sl) + '</small>' : '') + '</span></li>';
+      }).join('') + '</ol>' : '<p class="muted">Aucun ordre sur ce compte : la position voulue reste sous ' + nf(cfg.step / 2, 3) + ' lot.</p>';
+    var eng = tr.eng.map(Math.abs), es = eng[0] + eng[1] + eng[2] || 1, mv = tr.px1 / tr.px0 - 1;
+    var engTxt = ['Repli', 'Tendance', 'Indices'].map(function (nm, q) { return eng[q] / es >= 0.005 ? nm + ' ' + Math.round(eng[q] / es * 100) + ' %' : null; }).filter(Boolean).join(' · ');
+    var ls = same ? lotStats(run, tr) : null, amt = tradeAmt(run, tr, size);
+    return '<div class="td2">' + '<div class="tchw">' + chart + '</div>' +
+      '<div class="tg"><div><span>' + (same ? 'Sur ton compte (lots)' : 'Résultat estimé') + '</span><b class="' + (ls && !ls.mx ? '' : amt >= 0 ? 'pos' : 'neg') + '">' + (ls && !ls.mx ? 'non pris' : sUsd(amt)) + '</b><small>' + (same ? 'frais estimés ' + usd(ls.cost, 2) : 'taille du moteur') + '</small></div>' +
+      '<div><span>Moteur (taille exacte)</span><b>' + sUsd(tr.net * size) + '</b><small>' + pct(tr.net, 2) + ' du compte</small></div>' +
+      '<div><span>' + (live ? 'Entrée → dernier cours' : 'Entrée → sortie') + '</span><b>' + pxf(code, tr.px0) + ' → ' + pxf(code, tr.px1) + '</b><small class="' + (mv * tr.side >= 0 ? 'pos' : 'neg') + '">' + pct(mv, 2) + '</small></div>' +
+      '<div><span>Taille</span><b>' + (ls ? (ls.mx ? 'jusqu\'à ' + lotTxt(ls.mx) + ' lot' + (ls.mx >= 2 ? 's' : '') : 'trop petit') : lotTxt(roundStep(tr.h0 * size / vpl(run, code, tr.t0))) + ' lot') + '</b><small>' + upct(tr.h0, 0) + ' du compte' + (tr.max > tr.h0 * 1.01 ? ', jusqu\'à ' + upct(tr.max, 0) : '') + '</small></div></div>' +
+      '<h4 class="tlh">' + ico('screen') + 'Sur MT5, ce trade c\'était</h4>' + tl +
+      '<div class="tsrc"><span>D\'où vient la position · ' + esc(MK[code].n) + '</span><b>' + engTxt + '</b><div class="eng">' +
+      ['var(--e1)', 'var(--e2)', 'var(--e3)'].map(function (c, q) { return '<i style="width:' + (eng[q] / es * 100).toFixed(1) + '%;background:' + c + '"></i>'; }).join('') + '</div></div></div>';
+  }
+  document.addEventListener('toggle', function (e) {
+    var d = e.target;
+    if (!d || !d.matches || !d.matches('details.tr') || !d.open) return;
+    var box = d.querySelector('.td-x'), R = TRREG[d.dataset.tr];
+    if (!box || box.dataset.ok || !R) return;
+    box.innerHTML = tradeDetail(R.tr, R.run, R.size); box.dataset.ok = '1';
+  }, true);
 
   function renderTrades() {
     var run = S.off, days = S.D.days, n = days.length, all = buildTrades(run), Yn = yearOf(days[n - 1]);
@@ -844,21 +993,22 @@
     var L = all.filter(function (tr) { var yy = yearOf(days[tr.t0]); return (Y === -1 || yy === Y) && yy >= 2012 && (F === 'all' || MK[tr.code].f === F); });
     var all2 = L, skipped = L.filter(function (tr) { return !maxLots(run, tr); }).length;
     L = L.filter(function (tr) { return maxLots(run, tr) > 0; });               // les totaux ne comptent que les trades pris sur ce compte
-    var closed = L.filter(function (tr) { return tr.why !== 'live'; }), win = closed.filter(function (tr) { return tr.net > 0; }), lose = closed.filter(function (tr) { return tr.net <= 0; });
-    var sum = function (a) { return a.reduce(function (x, tr) { return x + tr.net; }, 0); }, size = cfg.size;
-    var best = L.slice().sort(function (a, b) { return b.net - a.net; })[0], worst = L.slice().sort(function (a, b) { return a.net - b.net; })[0];
+    var size = cfg.size, A = function (tr) { return tradeAmt(run, tr, size); };   // montants en lots sur ce compte, comme MT5
+    var closed = L.filter(function (tr) { return tr.why !== 'live'; }), win = closed.filter(function (tr) { return A(tr) > 0; }), lose = closed.filter(function (tr) { return A(tr) <= 0; });
+    var sum = function (a) { return a.reduce(function (x, tr) { return x + A(tr); }, 0); };
+    var best = L.slice().sort(function (a, b) { return A(b) - A(a); })[0], worst = L.slice().sort(function (a, b) { return A(a) - A(b); })[0];
     var dur = closed.length ? closed.reduce(function (x, tr) { return x + tr.t1 - tr.t0; }, 0) / closed.length : 0;
     var stops = closed.filter(function (tr) { return tr.why === 'stop'; }).length;
     var when = function (tr) { return tr.code + ' · ' + shortDay(days[tr.t0]) + ' ' + yearOf(days[tr.t0]); };
     var label = Y === -1 ? 'depuis 2012' : 'ouverts en ' + Y;
-    $('t-sum').innerHTML = '<div class="card-head"><h2>' + L.length + ' trade' + (L.length > 1 ? 's' : '') + ' ' + label + '</h2><span class="small">moteur ' + (cfg.phase === 'challenge' ? 'du challenge (8 %)' : 'du compte financé (' + upct(cfg.vol, 0) + ')') + ', montants pour ' + nf(size) + ' $, frais compris</span></div>' +
+    $('t-sum').innerHTML = '<div class="card-head"><h2>' + L.length + ' trade' + (L.length > 1 ? 's' : '') + ' ' + label + '</h2><span class="small">moteur ' + (cfg.phase === 'challenge' ? 'du challenge (8 %)' : 'du compte financé (' + upct(cfg.vol, 0) + ')') + ', en lots pour ' + nf(size) + ' $, frais estimés compris</span></div>' +
       (skipped ? '<p class="muted" style="margin:-4px 0 10px">' + skipped + ' autre' + (skipped > 1 ? 's' : '') + ' trade' + (skipped > 1 ? 's' : '') + ' du moteur, trop petit' + (skipped > 1 ? 's' : '') + ' pour un compte de ' + nf(size) + ' $, ne ' + (skipped > 1 ? 'sont' : 'est') + ' pas compté' + (skipped > 1 ? 's' : '') + ' (visible' + (skipped > 1 ? 's' : '') + ' dans la liste).</p>' : '') +
       '<div class="stat4 q6">' +
-      '<div><span>Résultat total</span><b class="' + (sum(L) >= 0 ? 'pos' : 'neg') + '">' + sUsd(sum(L) * size) + '</b><small>' + pct(sum(L)) + ' du compte</small></div>' +
+      '<div><span>Résultat total</span><b class="' + (sum(L) >= 0 ? 'pos' : 'neg') + '">' + sUsd(sum(L)) + '</b><small>' + pct(sum(L) / size) + ' du compte</small></div>' +
       '<div><span>Trades gagnants</span><b>' + (closed.length ? Math.round(win.length / closed.length * 100) : 0) + ' %</b><small>' + win.length + ' sur ' + closed.length + ' fermés</small></div>' +
-      '<div><span>Gain moyen / perte moyenne</span><b>' + (win.length ? sUsd(sum(win) / win.length * size) : '—') + ' / ' + (lose.length ? sUsd(sum(lose) / lose.length * size) : '—') + '</b><small>par trade fermé</small></div>' +
-      '<div><span>Meilleur</span><b class="pos">' + (best ? sUsd(best.net * size) : '—') + '</b><small>' + (best ? when(best) : '') + '</small></div>' +
-      '<div><span>Pire</span><b class="neg">' + (worst ? sUsd(worst.net * size) : '—') + '</b><small>' + (worst ? when(worst) : '') + '</small></div>' +
+      '<div><span>Gain moyen / perte moyenne</span><b>' + (win.length ? sUsd(sum(win) / win.length) : '—') + ' / ' + (lose.length ? sUsd(sum(lose) / lose.length) : '—') + '</b><small>par trade fermé</small></div>' +
+      '<div><span>Meilleur</span><b class="pos">' + (best ? sUsd(A(best)) : '—') + '</b><small>' + (best ? when(best) : '') + '</small></div>' +
+      '<div><span>Pire</span><b class="neg">' + (worst ? sUsd(A(worst)) : '—') + '</b><small>' + (worst ? when(worst) : '') + '</small></div>' +
       '<div><span>Durée moyenne</span><b>' + nf(dur, 0) + ' séances</b><small>' + (closed.length ? Math.round(stops / closed.length * 100) : 0) + ' % fermés par le stop</small></div></div>';
     var row = function (tr) { return tradeRow(tr, run, size); };
     L = all2; var shown = L.slice(0, S.tmax);
@@ -866,9 +1016,8 @@
       (L.length ? '<div class="trs">' + shown.map(row).join('') + '</div>' +
         (L.length > S.tmax ? '<button class="more-btn" data-tmore>Afficher ' + Math.min(40, L.length - S.tmax) + ' trades de plus (' + (L.length - S.tmax) + ' restants)</button>' : '')
         : '<div class="empty">' + ico('flat') + 'Aucun trade.</div>') +
-      '<p class="muted">Ceci est le journal du <b>moteur</b>, pas celui de votre compte (votre compte : onglet Réel). Les trades « En cours » sont les positions ouvertes en ce moment (onglet Positions, avec les lots de votre compte) ; ' +
-      'leur montant est arrêté au <b>dernier cours officiel de clôture (' + longDay(days[n - 1]) + ')</b> et ne bouge qu\'une fois par soir, alors que MT5 suit le cours en direct : le latent au cours du moment est dans l\'onglet Positions. ' +
-      'Les trades marqués « Trop petit : non pris » demandent moins d\'un demi-pas de lot pour un compte de ' + nf(size) + ' $ : ils ne se prennent pas et ne comptent pas dans les totaux. « Trop petit au départ » : la position n\'est ouverte sur MT5 que lorsque sa taille atteint un demi-pas (ordre « Nouvelle position » ce soir-là).Un trade va de l\'ouverture d\'une position à sa fermeture (stop, fin du signal ou retournement) ; les ajustements de taille entre les deux en font partie. Montants calculés sur la taille voulue par le moteur, avant arrondi des lots, aux cours officiels de clôture.</p>';
+      '<p class="muted">Le journal du <b>moteur</b>, joué avec les lots de ton compte : chaque montant est ce que MT5 aurait affiché en suivant les ordres du soir (frais estimés compris, hors écart achat-vente). Touche un trade pour voir ses ordres sur MT5 et le résultat du moteur à la taille exacte. ' +
+      'Les trades « En cours » sont arrêtés au <b>dernier cours officiel (' + longDay(days[n - 1]) + ')</b> ; le latent au cours du moment est dans Positions. « Trop petit : non pris » : moins d\'un demi-pas de lot sur ce compte, ni pris ni compté. Ton propre compte : onglet Réel.</p>';
   }
   document.addEventListener('click', function (e) {
     var y = e.target.closest('[data-tyear]'), f = e.target.closest('[data-tfam]'), m = e.target.closest('[data-tmore]');
@@ -996,7 +1145,7 @@
     });
     L.sort(function (a, b) { return b.tr.t0 - a.tr.t0; });
     var taken = L.filter(function (o) { return size === cfg.size ? maxLots(o.run, o.tr) > 0 : roundStep(o.tr.max * size / vpl(o.run, o.tr.code, o.tr.t0)) > 0; });   // sans les trades trop petits pour ce compte
-    var closed = taken.filter(function (o) { return o.tr.why !== 'live'; }), win = closed.filter(function (o) { return o.tr.net > 0; }).length, tot = taken.reduce(function (x, o) { return x + o.tr.net * size; }, 0);
+    var closed = taken.filter(function (o) { return o.tr.why !== 'live'; }), win = closed.filter(function (o) { return tradeAmt(o.run, o.tr, size) > 0; }).length, tot = taken.reduce(function (x, o) { return x + tradeAmt(o.run, o.tr, size); }, 0);
     var mx = S.smax || 40;
     $('m-trades').innerHTML = '<div class="card-head"><h2>Les trades de la période</h2><span class="small">' + taken.length + ' trades · ' + (closed.length ? Math.round(win / closed.length * 100) : 0) + ' % gagnants · ' + sUsd(tot) + (L.length > taken.length ? ' · ' + (L.length - taken.length) + ' trop petits non comptés' : '') + '</span></div>' +
       (L.length ? '<div class="trs">' + L.slice(0, mx).map(function (o) { return tradeRow(o.tr, o.run, size, o.tag); }).join('') + '</div>' +
@@ -1335,6 +1484,7 @@
     cours: function (q) { S.qaQuotes = q || null; S.prov = null; return fetchQuotes().then(render); },
     etat: function () { var m = moment(), run = currentRun(m); return { phase: m.ph, pend: m.pend.map(ds), dernier: ds(m.L), soir: run ? ds(dayOf(run, run.T - 1)) : null, ordres: run ? ordersAt(run, run.T - 1).list.map(function (o) { return o.type + ' ' + o.code + ' ' + o.from + '>' + o.to; }) : null, risque: run ? riskAt(run, run.T - 1) : null }; },
     run: function () { return S.run; }, data: function () { return S.D; },
+    guide: function (g, d) { var keep = dev; if (d) dev = d; var r = mt5Steps(g); dev = keep; return r; },
     importFichier: function (blob) { return readReport(blob).then(function (R) { R.at = Date.now(); S.real = R; store.set('real', R); render(); return { operations: R.deals.length, fermees: R.closed.length, ouvertes: R.open.length, resume: R.summary, compte: R.meta }; }); }
   };
 })();

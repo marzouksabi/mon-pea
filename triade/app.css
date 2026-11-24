@@ -360,7 +360,7 @@ b{font-weight:650}
 .pc .g{grid-template-columns:repeat(4,1fr)}
 /* signaux / trades en cours */
 h3.grp{margin:16px 0 8px;font-size:12px}
-.pcards{display:grid !important;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin-top:0}
+.pcards{display:grid !important;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px;margin-top:0}
 .ptable-wrap{display:none}
 .pc.sig{border:1px solid var(--accent);background:var(--accent-soft)}
 .ptag{display:inline-block;margin-top:6px;font-size:11.5px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
@@ -387,3 +387,110 @@ h3.grp{margin:16px 0 8px;font-size:12px}
 .bar i{display:block;height:100%;background:var(--accent);border-radius:6px}
 .bar.warn i{background:var(--warn)} .bar.crit i{background:var(--crit)}
 .bar.good i{background:var(--good)}
+
+/* ---------- guide MT5, ordres, positions et trades (cartes détaillées) ---------- */
+.ord{grid-template-columns:auto 1fr auto;align-items:start}
+.ord .tag,.ord .check{margin-top:2px}
+.ord .mt5{grid-column:1 / -1}
+.ord.done .mt5{display:none}
+.lv{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin-top:9px;font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;max-width:340px}
+.lv b{color:var(--ink);font-weight:700}
+.lvb{display:flex;height:8px;border-radius:5px;background:var(--line);overflow:hidden}
+.lvb i{display:block;height:100%}
+.lvb .k{background:color-mix(in srgb,var(--ink-3) 55%,transparent)}
+.lv.add .c,.lv.open .c{background:var(--good)}
+.ord.sell .lv.add .c,.ord.sell .lv.open .c{background:var(--crit)}
+.lv.cut .c,.lv.close .c{background:repeating-linear-gradient(-45deg,var(--warn) 0 3px,transparent 3px 6px);box-shadow:inset 0 0 0 1px var(--warn);border-radius:0 5px 5px 0}
+.flipv{display:flex;align-items:center;gap:6px;margin-top:9px}
+.flipv .ico{width:15px;height:15px;color:var(--ink-3)}
+.ord .l3{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:8px;font-size:12.5px;color:var(--ink-3)}
+.val{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--card-solid);color:var(--ink);font-weight:700;font-size:12.5px;font-variant-numeric:tabular-nums;padding:2px 7px 2px 8px;border-radius:8px;cursor:pointer;line-height:1.5;vertical-align:1px;transition:border-color .15s,background .15s}
+.val .ico{width:12px;height:12px;color:var(--ink-3)}
+.val:hover{border-color:var(--accent)} .val.ok{border-color:var(--good);background:var(--good-soft)} .val.ok .ico{color:var(--good)}
+details.mt5{margin-top:10px;border-radius:12px;background:var(--card-solid);border:1px solid var(--line);overflow:hidden}
+details.mt5 summary{display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;list-style:none;font-size:12.5px;color:var(--ink-2)}
+details.mt5 summary::-webkit-details-marker{display:none}
+details.mt5 summary .ico{width:15px;height:15px;color:var(--accent)}
+details.mt5 summary .t{font-weight:750;color:var(--accent);flex:none}
+details.mt5 summary .s{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+details.mt5 summary .chev{color:var(--ink-3);transition:transform .2s}
+details.mt5[open] summary .chev{transform:rotate(90deg)}
+details.mt5[open] summary{border-bottom:1px solid var(--line)}
+.mt5-b{padding:10px 12px 12px}
+.seg.dev{margin-bottom:10px}
+.seg.dev button{display:inline-flex;align-items:center;gap:6px}
+.seg.dev .ico{width:14px;height:14px}
+.lead5{margin:0 0 8px;font-size:12.5px;color:var(--ink-2)}
+.st5{list-style:none;margin:0;padding:0;counter-reset:st;display:flex;flex-direction:column;gap:8px}
+.st5 li{counter-increment:st;display:grid;grid-template-columns:22px 1fr;gap:9px;align-items:start;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.st5 li::before{content:counter(st);width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:800}
+.st5 b{color:var(--ink)}
+.st5 .ln{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;font-weight:650;background:var(--field);padding:1px 5px;border-radius:5px}
+.en{font-size:11px;color:var(--ink-3);margin-left:4px;font-weight:500}
+.en::before{content:"("} .en::after{content:")"}
+kbd{font:700 11.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:1px 6px;border-radius:6px;border:1px solid var(--line);border-bottom-width:2px;background:var(--field);color:var(--ink)}
+.w5{display:flex;gap:8px;align-items:flex-start;margin:10px 0 0;padding:8px 10px;border-radius:10px;background:var(--warn-soft);font-size:12.5px;color:var(--ink-2)}
+.w5 .ico{width:15px;height:15px;margin-top:2px;color:var(--warn)}
+.t5{margin:8px 0 0;font-size:12px;color:var(--ink-3)}
+/* carte de position */
+.pc{display:flex;flex-direction:column;border:1px solid transparent}
+.pc .g{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 8px;margin-top:10px;align-items:start}
+.pc .g .val{margin-top:2px;font-size:12.5px}
+.pc-f{margin-top:8px;font-size:11.5px;color:var(--ink-3)}
+.pc details.mt5{margin-top:10px}
+.pc .h + details.mt5,.pc .pc-f + details.mt5{margin-top:auto}
+.pc-f{margin-bottom:10px}
+.sg{margin-top:12px}
+.sg-t{position:relative;height:8px;border-radius:5px;background:linear-gradient(90deg,var(--crit-soft),var(--line) 30%)}
+.sg-f{position:absolute;left:0;top:0;bottom:0;border-radius:5px;opacity:.85}
+.sg-f.up{background:linear-gradient(90deg,color-mix(in srgb,var(--good) 35%,transparent),var(--good))}
+.sg-f.dn{background:linear-gradient(90deg,color-mix(in srgb,var(--warn) 35%,transparent),var(--warn))}
+.sg-e{position:absolute;top:-3px;bottom:-3px;width:2px;margin-left:-1px;background:var(--ink);border-radius:1px}
+.sg-c{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:var(--card-solid);border:3px solid var(--good)}
+.sg-c.dn{border-color:var(--warn)}
+.sg-l{position:relative;height:14px;margin-top:5px;font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.sg-l span{position:absolute;top:0;left:0;white-space:nowrap}
+.pc-f b{font-weight:700}
+@media (max-width:360px){.pc .g{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* carte de trade */
+.tr.off summary{opacity:.6}
+.td2{padding:0 0 14px 44px}
+.tchw{background:var(--field);border-radius:12px;padding:8px 8px 6px}
+.tch{display:block;width:100%;height:auto;overflow:visible}
+.tch .px{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.tch .sl{fill:none;stroke:var(--crit);stroke-width:1.5;stroke-dasharray:4 3;opacity:.85}
+.tch .in{fill:var(--ink);stroke:var(--card-solid);stroke-width:2}
+.tch .out{stroke:var(--card-solid);stroke-width:2} .tch .out.g{fill:var(--good)} .tch .out.b{fill:var(--crit)}
+.tch .o{fill:var(--card-solid);stroke:var(--accent);stroke-width:2}
+.legend.tl{margin:4px 2px 0;font-size:11.5px;gap:4px 12px}
+.legend i.dash{background:none;border-top:2px dashed var(--crit);height:0;width:14px}
+.tg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+.tg div{background:var(--field);border-radius:11px;padding:8px 10px}
+.tg span{display:block;font-size:11px;color:var(--ink-3)}
+.tg b{display:block;font-size:14px;font-variant-numeric:tabular-nums;margin-top:1px}
+.tg small{display:block;font-size:11.5px;color:var(--ink-3);margin-top:1px;font-variant-numeric:tabular-nums}
+@media (min-width:700px){.tg{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.tlh{display:flex;align-items:center;gap:7px;margin:14px 0 6px;font-size:12px;font-weight:750;color:var(--ink-2);text-transform:uppercase;letter-spacing:.05em}
+.tlh .ico{width:15px;height:15px;color:var(--accent)}
+.tlog{list-style:none;margin:0;padding:0 0 0 2px;position:relative}
+.tlog::before{content:"";position:absolute;left:68px;top:10px;bottom:10px;width:1px;background:var(--line)}
+.tlog li{display:grid;grid-template-columns:46px 1fr auto;gap:12px;align-items:start;padding:5px 0;font-size:13px}
+.tlog .d{color:var(--ink-3);font-size:12px;font-variant-numeric:tabular-nums;padding-top:2px}
+.tlog .x{display:flex;align-items:center;gap:7px;color:var(--ink);font-weight:600;position:relative}
+.tlog .x .ico{width:20px;height:20px;padding:3px;border-radius:7px;flex:none;background:var(--card-solid);box-shadow:0 0 0 1px var(--line);position:relative;z-index:1}
+.tlog .open .x .ico,.tlog .add .x .ico{color:var(--good)}
+.tr.sell .tlog .open .x .ico,.tr.sell .tlog .add .x .ico{color:var(--crit)}
+.tlog .cut .x .ico,.tlog .close .x .ico{color:var(--warn)}
+.tlog .stop .x{color:var(--ink-2);font-weight:500}
+.tlog .stop .x .ico{color:var(--accent)}
+.tlog .hit .x{color:var(--crit)} .tlog .hit .x .ico{color:var(--crit)}
+.tlog .p{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:12.5px}
+.tlog .p small{display:block;font-size:11px;color:var(--ink-3)}
+.tlog .more span:nth-child(2){font-size:12px;color:var(--ink-3);font-style:italic;padding-left:27px}
+.tsrc{margin-top:12px;font-size:12px;color:var(--ink-3)}
+.tsrc span{display:block}
+.tsrc b{display:block;color:var(--ink);font-size:13px;margin-top:1px}
+.tsrc .eng{display:flex;height:6px;border-radius:4px;overflow:hidden;margin-top:6px;background:var(--line)}
+.tsrc .eng i{display:block;height:100%}
+@media (max-width:480px){.td2{padding-left:0}}
+.pc .ptag{align-self:flex-start}
