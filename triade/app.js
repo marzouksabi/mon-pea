@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 16/11 21:09';
+  var VERSION = 'version du 24/11 22:47';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -18,6 +18,7 @@
   var dn = function (s) { return Math.floor(Date.parse(s + 'T00:00:00Z') / DAY); };
   var shortDay = function (d) { var x = new Date(d * DAY); return x.getUTCDate() + ' ' + MOIS[x.getUTCMonth()]; };
   var longDay = function (d) { var x = new Date(d * DAY); return JOURS[x.getUTCDay()] + ' ' + x.getUTCDate() + ' ' + MOIS[x.getUTCMonth()]; };
+  var dot = function (s) { return /\.$/.test(s) ? s : s + '.'; };   // point final sans doubler celui d'un mois abrégé (« 26 nov. »)
   var fullDay = function (d) { var x = new Date(d * DAY); return x.getUTCDate() + ' ' + MOIS[x.getUTCMonth()] + ' ' + x.getUTCFullYear(); };
   var yearOf = function (d) { return new Date(d * DAY).getUTCFullYear(); };
   var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
@@ -358,7 +359,7 @@
       sub = n ? 'Si ce n\'est pas fait, passez-les maintenant : les CFD restent ouverts jusqu\'à 23 h environ. Les cours officiels arrivent dans la soirée et confirment la liste.' : none;
     } else if (m.ph === 'officiel') {
       big = 'Ce soir : ' + lab;
-      sub = (n ? 'Calculés avec les cours de clôture officiels. S\'ils sont passés, rien d\'autre à faire jusqu\'à la prochaine séance (' + longDay(m.next) + ').' : none + ' Prochaine séance : ' + longDay(m.next) + '.');
+      sub = (n ? 'Calculés avec les cours de clôture officiels. S\'ils sont passés, rien d\'autre à faire jusqu\'à la prochaine séance (' + longDay(m.next) + ').' : none + ' Prochaine séance : ' + dot(longDay(m.next)));
     } else {
       big = 'Pas de séance aujourd\'hui';
       sub = 'Prochaine séance : ' + longDay(m.next) + ', ordres à passer avant ' + hm(closeUTC(m.next)) + '. Ci-dessous, les ordres du dernier soir (' + longDay(day) + ') : vérifiez qu\'ils ont bien été passés.';
@@ -424,9 +425,12 @@
     if (m.pend.length && !S.quotes) notes.push(['warn', 'alert', '<b>Cours du moment indisponibles.</b> Nouvel essai chaque minute.']);
     var cl = closeUTC(m.next), early = EARLY.indexOf(ds(m.next)) >= 0;
     if (hm(cl) !== '22 h 00') notes.push([early ? 'warn' : '', 'clock', '<b>Clôture de New York à ' + hm(cl) + '</b> (heure de Paris) le ' + longDay(m.next) + (early ? ' : séance courte.' : ' : décalage d\'heure d\'été entre l\'Europe et les États-Unis.')]);
+    var seenH = false, seenE = false;                                 // jours fériés et séances courtes des 7 prochains jours, annoncés à l'avance
     for (var d = m.next + 1, k = 0; k < 7; d++, k++) {
       var w = new Date(d * DAY).getUTCDay();
-      if (w > 0 && w < 6 && HOLIDAYS.indexOf(ds(d)) >= 0) { notes.push(['', 'info', '<b>Bourse de New York fermée le ' + longDay(d) + '.</b> Pas d\'ordre ce soir-là ; les positions restent en place.']); break; }
+      if (w === 0 || w === 6) continue;
+      if (!seenH && HOLIDAYS.indexOf(ds(d)) >= 0) { seenH = true; notes.push(['', 'info', '<b>Bourse de New York fermée le ' + dot(longDay(d)) + '</b> Pas d\'ordre ce soir-là ; les positions restent en place.']); }
+      else if (!seenE && EARLY.indexOf(ds(d)) >= 0) { seenE = true; notes.push(['warn', 'clock', '<b>Séance courte le ' + longDay(d) + '</b> : clôture de New York à ' + hm(closeUTC(d)) + ' (heure de Paris), ordres à passer avant.']); }
     }
     notes.push(['', 'info', 'Chaque ordre se passe <b>au marché</b> sur MT5 avec son <b>stop</b> (niveau indiqué, ou la distance depuis votre prix d\'exécution). Les cours affichés sont ceux des marchés au comptant ; ceux de MT5 peuvent différer un peu.']);
     $('s-info').innerHTML = '<h2>À savoir ce soir</h2><ul class="notes">' + notes.map(function (x) { return '<li class="' + x[0] + '">' + ico(x[1]) + '<span>' + x[2] + '</span></li>'; }).join('') + '</ul>';
@@ -497,7 +501,7 @@
       '<h3 class="grp">Signaux ' + soirTxt + (nsig ? ' · ' + nsig : '') + '</h3>' +
       (sigCards.length ? '<div class="pcards">' + sigCards.join('') + '</div>' : '<div class="empty slim">' + ico('check') + '<span>Aucun signal : rien à ouvrir, fermer ou changer.</span></div>') +
       '<h3 class="grp">Trades en cours · ' + keep.length + '</h3><p class="muted" style="margin:0 0 6px">À garder tels quels sur MT5' + (nmv ? ' (seul le stop de ceux marqués change ce soir)' : '') + '.</p>' +
-      '<div class="startbox">' + ico('flag') + '<div><b>Vous démarrez un compte ?</b> Pour être aligné sur le moteur, ouvrez <b>toutes</b> les positions de cette liste avec leurs lots et leurs stops, en plus des signaux du soir, et pas seulement ces derniers.' +
+      '<div class="startbox">' + ico('flag') + '<div><b>Vous démarrez un compte ?</b> Pour être aligné sur le moteur, ouvrez <b>toutes</b> les positions de cette liste avec leurs lots et leurs stops, en plus des signaux du soir, et pas seulement ces derniers. ' +
       'Ouvertes au cours du moment, elles risquent ensemble <b>' + upct(tot.rnow / cfg.size, 2) + '</b> (' + usd(tot.rnow) + ') si tous les stops sont touchés' + (tot.rnow / cfg.size > 0.029 ? ' : <b>au-dessus de 2,9 %</b>, attendez la prochaine révision pour démarrer.' : '.') + '</div></div>' +
       (keep.length ? '<div class="pcards">' + keep.map(function (x) { return pcard(x, mvs[x.code] ? 'Stop à déplacer ce soir' : '', 'm'); }).join('') + '</div>' : '<div class="empty slim">' + ico('flat') + '<span>Aucun trade en cours.</span></div>') +
       (flats.length ? '<h3 class="grp">Fermées par un stop · ' + flats.length + '</h3><div class="pcards">' + flats.map(function (x) { return pcard(x); }).join('') + '</div>' : '') +
@@ -522,12 +526,13 @@
 
   /* ---- Bilan ---- */
   function bilanData() {
-    if (S.bil && S.bil.key === cfg.size + '|' + cfg.swap + '|' + cfg.vol) return S.bil;
-    var run = getRun(cfg.vol), CHR = getRun(CH_VOL), ch = { r: CHR.R, rl: CHR.RL }, days = S.D.days, n = days.length, R = run.R, RL = run.RL, first = days.findIndex(function (d) { return yearOf(d) >= 2012; });
-    var years = {}, months = {};
+    var key = cfg.size + '|' + cfg.swap + '|' + cfg.vol + '|' + curVol();
+    if (S.bil && S.bil.key === key) return S.bil;
+    var run = getRun(cfg.vol), ENG = getRun(curVol()), CHR = getRun(CH_VOL), ch = { r: CHR.R, rl: CHR.RL }, days = S.D.days, n = days.length, R = run.R, RL = run.RL, first = days.findIndex(function (d) { return yearOf(d) >= 2012; });
+    var years = {}, months = {};                                      // moteur de l'étape en cours (8 % pendant le challenge), comme Ce soir, Positions et Trades
     for (var t = first; t < n; t++) {
       var y = yearOf(days[t]), mo = new Date(days[t] * DAY).getUTCMonth();
-      years[y] = (years[y] || 0) + R[t]; months[y + '-' + mo] = (months[y + '-' + mo] || 0) + R[t];
+      years[y] = (years[y] || 0) + ENG.R[t]; months[y + '-' + mo] = (months[y + '-' + mo] || 0) + ENG.R[t];
     }
     var starts = [], f = fee();
     for (var s = first; s < n; s += 5) {
@@ -535,12 +540,13 @@
       if (e < 0) break;
       starts.push(E.onestep(R, RL, s, e, cfg.size, f, false, 0, ch).net);
     }
-    S.bil = { key: cfg.size + '|' + cfg.swap + '|' + cfg.vol, first: first, years: years, months: months, starts: starts };
+    S.bil = { key: key, first: first, years: years, months: months, starts: starts };
     return S.bil;
   }
   function median(a) { var b = a.slice().sort(function (x, y) { return x - y; }), k = b.length; return k ? (k % 2 ? b[(k - 1) / 2] : (b[k / 2 - 1] + b[k / 2]) / 2) : 0; }
   function renderBilan() {
-    var B = bilanData(), run = getRun(cfg.vol), CHR = getRun(CH_VOL), days = S.D.days, n = days.length, R = run.R, RL = run.RL, Y0 = 2012, Yn = yearOf(days[n - 1]);
+    var B = bilanData(), FIN = getRun(cfg.vol), run = getRun(curVol()), CHR = getRun(CH_VOL), days = S.D.days, n = days.length, R = run.R, RL = run.RL, Y0 = 2012, Yn = yearOf(days[n - 1]);
+    var engLab = cfg.phase === 'challenge' ? 'moteur du challenge (' + upct(CH_VOL, 0) + ')' : 'moteur du compte financé (' + upct(cfg.vol, 0) + ')';
     if (S.byear < Y0 || S.byear > Yn) S.byear = 2020;
     var Y = S.byear, yrs = [];
     for (var y = Y0; y <= Yn; y++) yrs.push(y);
@@ -549,13 +555,13 @@
     if (chip) $('b-years').scrollLeft = chip.offsetLeft - $('b-years').clientWidth / 2 + chip.clientWidth / 2;
     var sans = S.bmode === 'sans';
     $('b-mode').innerHTML = '<button data-bmode="avec" aria-pressed="' + !sans + '">Avec retraits</button><button data-bmode="sans" aria-pressed="' + sans + '">Sans retraits</button>';
-    var s0 = days.findIndex(function (d) { return yearOf(d) >= Y; }), sim = E.onestep(R, RL, Math.max(0, s0 - 1), n - 1, cfg.size, fee(), sans, 0, { r: CHR.R, rl: CHR.RL });
+    var s0 = days.findIndex(function (d) { return yearOf(d) >= Y; }), sim = E.onestep(FIN.R, FIN.RL, Math.max(0, s0 - 1), n - 1, cfg.size, fee(), sans, 0, { r: CHR.R, rl: CHR.RL });
     var span = (n - s0) / 252, x = Array.prototype.slice.call(R, s0), sum = 0, mean, sd = 0, eq = [], dd = [], pk = 0, mdd = 0;
     x.forEach(function (v) { sum += v; eq.push(sum); pk = Math.max(pk, sum); dd.push(sum - pk); mdd = Math.min(mdd, sum - pk); });
     mean = sum / x.length; x.forEach(function (v) { sd += (v - mean) * (v - mean); }); sd = Math.sqrt(sd / (x.length - 1));
     var pays = sim.events.filter(function (e) { return e.type === 'paiement'; }), buys = sim.events.filter(function (e) { return e.type === 'achat'; });
     var acc = sim.account;
-    var kpis = '<div class="kpis"><div><span>Moteur, par an</span><b>' + pct(mean * 252) + '</b></div><div><span>Pire recul</span><b>' + pct(mdd) + '</b></div>' +
+    var kpis = '<p class="muted" style="margin:10px 0 0">Chiffres du ' + engLab + ' depuis janvier ' + Y + ' ; le compte ci-dessus suit le moteur du challenge (' + upct(CH_VOL, 0) + '), puis celui du compte financé (' + upct(cfg.vol, 0) + ').</p><div class="kpis"><div><span>Moteur, par an</span><b>' + pct(mean * 252) + '</b></div><div><span>Pire recul</span><b>' + pct(mdd) + '</b></div>' +
       '<div><span>Rapport gain / risque</span><b>' + nf(mean / sd * Math.sqrt(252), 2) + '</b></div><div><span>Sur la période</span><b>' + nf(span, 1) + ' ans</b></div></div>';
     var size = cfg.size, floor = 0.94 * size, pl = function (k, w) { return k + ' ' + w + (k > 1 ? 's' : ''); };
     var buyTxt = pl(buys.length, 'challenge') + ' acheté' + (buys.length > 1 ? 's' : '') + ' (' + usd(sim.fees) + '), ' + sim.passed + ' réussi' + (sim.passed > 1 ? 's' : '') + ', ' + sim.burnt + ' cramé' + (sim.burnt > 1 ? 's' : '');
@@ -576,7 +582,7 @@
         '<div class="legend"><span><i style="background:var(--accent)"></i>solde</span><span><i style="background:var(--crit)"></i>seuil de perte</span><span><i style="background:var(--ink-3)"></i>solde de départ</span></div>';
       balanceChart($('b-chart'), days.slice(s0), sim.bal, sim.mll);
     } else {
-      $('b-curve').innerHTML = '<div class="card-head"><h2>Le moteur depuis janvier ' + Y + '</h2><span class="small">gain cumulé, en % du compte</span></div><div class="chart" id="b-chart"></div>' +
+      $('b-curve').innerHTML = '<div class="card-head"><h2>Le moteur depuis janvier ' + Y + '</h2><span class="small">' + engLab + ', gain cumulé en % du compte</span></div><div class="chart" id="b-chart"></div>' +
         '<div class="legend"><span><i style="background:var(--accent)"></i>gain cumulé</span><span><i style="background:var(--crit);opacity:.5;height:8px"></i>recul depuis le plus haut</span></div>';
       curveChart($('b-chart'), days.slice(s0), eq, dd);
     }
@@ -600,7 +606,7 @@
     var col = function (y, top) { var v = B.years[y] || 0, h = Math.abs(v) / mxY * (top ? 82 : 40), dim = y < Y ? ' dim' : '';
       if (top) return '<div class="c' + dim + '" data-byear="' + y + '">' + (v >= 0 ? '<span class="yb-v">' + nf(v * 100, 1) + '</span><i class="b" style="height:' + h.toFixed(1) + 'px"></i>' : '') + '</div>';
       return '<div class="c' + dim + '" data-byear="' + y + '">' + (v < 0 ? '<i class="b" style="height:' + h.toFixed(1) + 'px"></i><span class="yb-v">' + nf(v * 100, 1) + '</span>' : '') + '</div>'; };
-    $('b-annees').innerHTML = '<div class="card-head"><h2>Année par année</h2><span class="small">moteur en % du compte · touchez une année pour y démarrer</span></div>' +
+    $('b-annees').innerHTML = '<div class="card-head"><h2>Année par année</h2><span class="small">' + engLab + ', en % du compte · touchez une année pour y démarrer</span></div>' +
       '<div class="yb-wrap"><div class="yb-top">' + yrs.map(function (y) { return col(y, true); }).join('') + '</div><div class="yb-bot">' + yrs.map(function (y) { return col(y, false); }).join('') + '</div>' +
       '<div class="yb-y">' + yrs.map(function (y) { return '<span>' + String(y).slice(2) + '</span>'; }).join('') + '</div></div>' +
       '<div class="scroll"><table class="ptable" style="margin-top:12px"><thead><tr><th>Année</th><th>Moteur</th><th>' + (sans ? 'Solde en fin d’année' : 'Compte : retraits − achats') + '</th></tr></thead><tbody>' +
@@ -609,14 +615,14 @@
         return '<tr><td>' + y + (y === Yn ? ' (en cours)' : '') + '</td><td class="' + ((B.years[y] || 0) >= 0 ? 'pos' : 'neg') + '">' + pct(B.years[y] || 0) + '</td>' + last + '</tr>'; }).join('') + '</tbody></table></div>';
 
     // les challenges année par année : un challenge acheté début janvier, et tous les départs possibles de l'année
-    renderChallenges(run, CHR, B);
+    renderChallenges(FIN, CHR, B);
 
     // risque
     var worst = 0, wd = 0, mpos = 0, mtot = 0, stops = 0, rmax = 0;
     for (var t = s0; t < n; t++) { if (RL[t] < worst) { worst = RL[t]; wd = days[t]; } rmax = Math.max(rmax, run.RISK[t]); }
     Object.keys(B.months).forEach(function (k) { if (+k.slice(0, 4) >= Y) { mtot++; if (B.months[k] > 0) mpos++; } });
     run.events.forEach(function (e) { if (e.t >= s0 && e.type === 'stop') stops++; });
-    $('b-risk').innerHTML = '<h2>Risque</h2><div class="stat4">' +
+    $('b-risk').innerHTML = '<div class="card-head"><h2>Risque</h2><span class="small">' + engLab + '</span></div><div class="stat4">' +
       '<div><span>Pire journée (au plus bas)</span><b class="neg">' + pct(worst, 2) + '</b><small>' + (wd ? fullDay(wd) : '') + ' · ' + usd(worst * cfg.size) + '</small></div>' +
       '<div><span>Pire recul</span><b class="neg">' + pct(mdd) + '</b><small>' + usd(mdd * cfg.size) + ' sur ' + nf(cfg.size) + ' $</small></div>' +
       '<div><span>Mois gagnants</span><b>' + (mtot ? Math.round(mpos / mtot * 100) : 0) + ' %</b><small>' + mpos + ' sur ' + mtot + '</small></div>' +
@@ -639,13 +645,13 @@
     cont.push(['Frais', fees]);
     cont.sort(function (a, b) { return b[1] - a[1]; });
     var mc = Math.max.apply(null, cont.map(function (c) { return Math.abs(c[1]); })) || 0.01;
-    $('b-mkts').innerHTML = '<div class="card-head"><h2>Ce que chaque marché a rapporté</h2><span class="small">depuis janvier ' + Y + ', en % du compte</span></div><div class="mk">' + cont.map(function (c) {
+    $('b-mkts').innerHTML = '<div class="card-head"><h2>Ce que chaque marché a rapporté</h2><span class="small">' + engLab + ', depuis janvier ' + Y + ', en % du compte</span></div><div class="mk">' + cont.map(function (c) {
       var w = Math.abs(c[1]) / mc * 50;
       return '<div class="r"><span class="n">' + c[0] + '</span><div class="bar"><i style="' + (c[1] >= 0 ? 'left:50%;background:var(--accent)' : 'right:50%;background:var(--crit)') + ';width:' + w.toFixed(1) + '%"></i></div><span class="v ' + (c[1] >= 0 ? 'pos' : 'neg') + '">' + pct(c[1]) + '</span></div>';
     }).join('') + '</div>';
 
     // mois
-    $('b-month').innerHTML = '<div class="card-head"><h2>Mois par mois en ' + Y + '</h2><span class="small">moteur, en % du compte</span></div><div class="months">' + MOIS.map(function (mn, k) {
+    $('b-month').innerHTML = '<div class="card-head"><h2>Mois par mois en ' + Y + '</h2><span class="small">' + engLab + ', en % du compte</span></div><div class="months">' + MOIS.map(function (mn, k) {
       var v = B.months[Y + '-' + k];
       if (v === undefined) return '<div class="na"><span>' + mn + '</span><b>—</b></div>';
       var a = Math.min(1, Math.abs(v) / 0.03);
@@ -793,18 +799,25 @@
     return out;
   }
   var WHY = { stop: 'Stop touché', fin: 'Fermée par le moteur', flip: 'Retournée', live: 'En cours' };
+  function maxLots(run, tr) {                                         // plus gros lot tenu pendant le trade sur ce compte (0 : trop petit, jamais pris)
+    if (tr._mxRef && tr._mxRef === run._lots) return tr._mx;            // recalculé si les lots changent (taille du compte, pas, contrats)
+    var mx = 0, end = tr.why === 'live' ? tr.t1 : tr.t1 - 1;
+    for (var t = tr.t0; t <= end; t++) mx = Math.max(mx, Math.abs(lotsAt(run, t)[tr.j]));
+    tr._mx = mx; tr._mxRef = run._lots;
+    return mx;
+  }
   /* une ligne de trade dépliable ; size : taille du compte pour les montants et les lots ; tag : étiquette en plus (étape du compte) */
   function tradeRow(tr, run, size, tag) {
     var days = S.D.days, d0 = days[tr.t0], d1 = days[tr.t1], ns = tr.t1 - tr.t0, cls = tr.side > 0 ? 'buy' : 'sell', amt = tr.net * size;
     var eng = tr.eng.map(Math.abs), es = eng[0] + eng[1] + eng[2] || 1;
     var engTxt = ['Repli', 'Tendance', 'Indices'].map(function (nm, k) { return eng[k] / es >= 0.005 ? nm + ' ' + Math.round(eng[k] / es * 100) + ' %' : null; }).filter(Boolean).join(' · ');
     var stp = tr.side > 0 ? tr.ref * (1 - tr.dist) : tr.ref * (1 + tr.dist), mv = tr.px1 / tr.px0 - 1;
-    var lv = size === cfg.size ? Math.abs(lotsAt(run, tr.t0)[tr.j]) : roundStep(tr.h0 * size / vpl(run, tr.code, tr.t0));
-    var lots = lv ? nf(lv, cfg.step < 0.1 ? 2 : 1) + ' lot' + (lv >= 2 ? 's' : '') : 'sous ' + nf(cfg.step / 2, 3) + ' lot : non pris';
+    var lv = size === cfg.size ? Math.abs(lotsAt(run, tr.t0)[tr.j]) : roundStep(tr.h0 * size / vpl(run, tr.code, tr.t0)), mx = size === cfg.size ? maxLots(run, tr) : lv;
+    var lots = lv ? nf(lv, cfg.step < 0.1 ? 2 : 1) + ' lot' + (lv >= 2 ? 's' : '') : mx ? 'trop petit au départ, puis ' + nf(mx, cfg.step < 0.1 ? 2 : 1) + ' lot' + (mx >= 2 ? 's' : '') : 'sous ' + nf(cfg.step / 2, 3) + ' lot : non pris';
     var live = tr.why === 'live';
     return '<details class="tr ' + cls + '"><summary><span class="i">' + ico(cls) + '</span><span class="w"><b>' + tr.code + '</b> <span class="small">' + (tr.side > 0 ? 'Achat' : 'Vente') + '</span>' +
       '<span class="tag2' + (tr.why === 'stop' ? ' stop' : live ? ' live' : '') + '">' + WHY[tr.why] + '</span>' + (tag ? '<span class="tag2">' + tag + '</span>' : '') +
-      (lv ? '' : '<span class="tag2 off">Trop petit : non pris</span>') +
+      (lv ? '' : mx ? '<span class="tag2 off">Trop petit au départ</span>' : '<span class="tag2 off">Trop petit : non pris</span>') +
       '<small>' + shortDay(d0) + (yearOf(d0) !== yearOf(d1) || live ? ' ' + yearOf(d0) : '') + ' → ' + (live ? 'en cours' : shortDay(d1) + ' ' + yearOf(d1)) + ' · ' + ns + ' séance' + (ns > 1 ? 's' : '') + '</small></span>' +
       '<span class="r"><b class="' + (amt >= 0 ? 'pos' : 'neg') + '">' + sUsd(amt) + '</b><small>' + pct(tr.net, 2) + '</small></span></summary>' +
       '<div class="td"><div><span>Entrée · ' + fullDay(d0) + '</span><b>' + pxf(tr.code, tr.px0) + '</b></div>' +
@@ -829,6 +842,8 @@
     var F = S.tfam;
     $('t-fam').innerHTML = [['all', 'Tous'], ['idx', 'Indices'], ['fx', 'Devises'], ['met', 'Métaux']].map(function (f) { return '<button data-tfam="' + f[0] + '" aria-pressed="' + (f[0] === F) + '">' + f[1] + '</button>'; }).join('');
     var L = all.filter(function (tr) { var yy = yearOf(days[tr.t0]); return (Y === -1 || yy === Y) && yy >= 2012 && (F === 'all' || MK[tr.code].f === F); });
+    var all2 = L, skipped = L.filter(function (tr) { return !maxLots(run, tr); }).length;
+    L = L.filter(function (tr) { return maxLots(run, tr) > 0; });               // les totaux ne comptent que les trades pris sur ce compte
     var closed = L.filter(function (tr) { return tr.why !== 'live'; }), win = closed.filter(function (tr) { return tr.net > 0; }), lose = closed.filter(function (tr) { return tr.net <= 0; });
     var sum = function (a) { return a.reduce(function (x, tr) { return x + tr.net; }, 0); }, size = cfg.size;
     var best = L.slice().sort(function (a, b) { return b.net - a.net; })[0], worst = L.slice().sort(function (a, b) { return a.net - b.net; })[0];
@@ -837,6 +852,7 @@
     var when = function (tr) { return tr.code + ' · ' + shortDay(days[tr.t0]) + ' ' + yearOf(days[tr.t0]); };
     var label = Y === -1 ? 'depuis 2012' : 'ouverts en ' + Y;
     $('t-sum').innerHTML = '<div class="card-head"><h2>' + L.length + ' trade' + (L.length > 1 ? 's' : '') + ' ' + label + '</h2><span class="small">moteur ' + (cfg.phase === 'challenge' ? 'du challenge (8 %)' : 'du compte financé (' + upct(cfg.vol, 0) + ')') + ', montants pour ' + nf(size) + ' $, frais compris</span></div>' +
+      (skipped ? '<p class="muted" style="margin:-4px 0 10px">' + skipped + ' autre' + (skipped > 1 ? 's' : '') + ' trade' + (skipped > 1 ? 's' : '') + ' du moteur, trop petit' + (skipped > 1 ? 's' : '') + ' pour un compte de ' + nf(size) + ' $, ne ' + (skipped > 1 ? 'sont' : 'est') + ' pas compté' + (skipped > 1 ? 's' : '') + ' (visible' + (skipped > 1 ? 's' : '') + ' dans la liste).</p>' : '') +
       '<div class="stat4 q6">' +
       '<div><span>Résultat total</span><b class="' + (sum(L) >= 0 ? 'pos' : 'neg') + '">' + sUsd(sum(L) * size) + '</b><small>' + pct(sum(L)) + ' du compte</small></div>' +
       '<div><span>Trades gagnants</span><b>' + (closed.length ? Math.round(win.length / closed.length * 100) : 0) + ' %</b><small>' + win.length + ' sur ' + closed.length + ' fermés</small></div>' +
@@ -845,14 +861,14 @@
       '<div><span>Pire</span><b class="neg">' + (worst ? sUsd(worst.net * size) : '—') + '</b><small>' + (worst ? when(worst) : '') + '</small></div>' +
       '<div><span>Durée moyenne</span><b>' + nf(dur, 0) + ' séances</b><small>' + (closed.length ? Math.round(stops / closed.length * 100) : 0) + ' % fermés par le stop</small></div></div>';
     var row = function (tr) { return tradeRow(tr, run, size); };
-    var shown = L.slice(0, S.tmax);
+    L = all2; var shown = L.slice(0, S.tmax);
     $('t-list').innerHTML = '<div class="card-head"><h2>Détail des trades</h2><span class="small">du plus récent au plus ancien · touchez un trade</span></div>' +
       (L.length ? '<div class="trs">' + shown.map(row).join('') + '</div>' +
         (L.length > S.tmax ? '<button class="more-btn" data-tmore>Afficher ' + Math.min(40, L.length - S.tmax) + ' trades de plus (' + (L.length - S.tmax) + ' restants)</button>' : '')
         : '<div class="empty">' + ico('flat') + 'Aucun trade.</div>') +
       '<p class="muted">Ceci est le journal du <b>moteur</b>, pas celui de votre compte (votre compte : onglet Réel). Les trades « En cours » sont les positions ouvertes en ce moment (onglet Positions, avec les lots de votre compte) ; ' +
       'leur montant est arrêté au <b>dernier cours officiel de clôture (' + longDay(days[n - 1]) + ')</b> et ne bouge qu\'une fois par soir, alors que MT5 suit le cours en direct : le latent au cours du moment est dans l\'onglet Positions. ' +
-      'Les trades marqués « Trop petit » demandent moins d\'un demi-pas de lot pour un compte de ' + nf(size) + ' $ : ils ne se prennent pas. Un trade va de l\'ouverture d\'une position à sa fermeture (stop, fin du signal ou retournement) ; les ajustements de taille entre les deux en font partie. Montants calculés sur la taille voulue par le moteur, avant arrondi des lots, aux cours officiels de clôture.</p>';
+      'Les trades marqués « Trop petit : non pris » demandent moins d\'un demi-pas de lot pour un compte de ' + nf(size) + ' $ : ils ne se prennent pas et ne comptent pas dans les totaux. « Trop petit au départ » : la position n\'est ouverte sur MT5 que lorsque sa taille atteint un demi-pas (ordre « Nouvelle position » ce soir-là).Un trade va de l\'ouverture d\'une position à sa fermeture (stop, fin du signal ou retournement) ; les ajustements de taille entre les deux en font partie. Montants calculés sur la taille voulue par le moteur, avant arrondi des lots, aux cours officiels de clôture.</p>';
   }
   document.addEventListener('click', function (e) {
     var y = e.target.closest('[data-tyear]'), f = e.target.closest('[data-tfam]'), m = e.target.closest('[data-tmore]');
@@ -979,9 +995,10 @@
       buildTrades(x[0]).forEach(function (tr) { if (tr.t0 > i0 && tr.t0 <= i1 && sim.phase[tr.t0 - i0 - 1] === x[1]) L.push({ tr: tr, run: x[0], tag: x[2] }); });
     });
     L.sort(function (a, b) { return b.tr.t0 - a.tr.t0; });
-    var closed = L.filter(function (o) { return o.tr.why !== 'live'; }), win = closed.filter(function (o) { return o.tr.net > 0; }).length, tot = L.reduce(function (x, o) { return x + o.tr.net * size; }, 0);
+    var taken = L.filter(function (o) { return size === cfg.size ? maxLots(o.run, o.tr) > 0 : roundStep(o.tr.max * size / vpl(o.run, o.tr.code, o.tr.t0)) > 0; });   // sans les trades trop petits pour ce compte
+    var closed = taken.filter(function (o) { return o.tr.why !== 'live'; }), win = closed.filter(function (o) { return o.tr.net > 0; }).length, tot = taken.reduce(function (x, o) { return x + o.tr.net * size; }, 0);
     var mx = S.smax || 40;
-    $('m-trades').innerHTML = '<div class="card-head"><h2>Les trades de la période</h2><span class="small">' + L.length + ' trades · ' + (closed.length ? Math.round(win / closed.length * 100) : 0) + ' % gagnants · ' + sUsd(tot) + '</span></div>' +
+    $('m-trades').innerHTML = '<div class="card-head"><h2>Les trades de la période</h2><span class="small">' + taken.length + ' trades · ' + (closed.length ? Math.round(win / closed.length * 100) : 0) + ' % gagnants · ' + sUsd(tot) + (L.length > taken.length ? ' · ' + (L.length - taken.length) + ' trop petits non comptés' : '') + '</span></div>' +
       (L.length ? '<div class="trs">' + L.slice(0, mx).map(function (o) { return tradeRow(o.tr, o.run, size, o.tag); }).join('') + '</div>' +
         (L.length > mx ? '<button class="more-btn" data-smore>Afficher ' + Math.min(40, L.length - mx) + ' trades de plus (' + (L.length - mx) + ' restants)</button>' : '') : '<div class="empty">' + ico('flat') + 'Aucun trade.</div>') +
       '<p class="muted">Chaque trade est celui du moteur de l\'étape où il a été ouvert (challenge à 8 %, compte financé à ' + upct(M.vol, 0) + '). Au passage d\'un compte à l\'autre, le nouveau compte démarre vide : les montants y sont approximatifs.</p>';
