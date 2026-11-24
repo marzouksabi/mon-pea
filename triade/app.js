@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var E = window.TriadeEngine;
-  var VERSION = 'version du 24/11 23:21';
+  var VERSION = 'version du 24/11 23:25';
   var $ = function (id) { return document.getElementById(id); };
   var DAY = 86400000;
   var MOIS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
@@ -316,8 +316,7 @@
     var d = day; for (var i = 0; i < k; i++) d = nextTrading(d);
     return { k: k, day: d };
   }
-  /* ---------- guide MT5 : les gestes exacts dans MetaTrader 5, sur ordinateur ou sur téléphone ---------- */
-  var dev = store.get('dev', null) || (window.matchMedia && matchMedia('(pointer:coarse)').matches ? 'tel' : 'pc');
+  /* ---------- guide MT5 : les gestes exacts dans l'appli MetaTrader 5 du téléphone (là où l'utilisateur passe ses ordres) ---------- */
   var ui = function (fr, en) { return '<b>' + fr + '</b>' + (en ? '<span class="en">' + en + '</span>' : ''); };
   var rawPx = function (code, v) { var m = MK[code]; return v.toFixed(m.f === 'idx' ? (v < 1000 ? 2 : 1) : m.d); };
   var lotTxt = function (v) { return nf(Math.abs(v), cfg.step < 0.1 ? 2 : 1); };
@@ -326,36 +325,29 @@
   var slPill = function (code, v) { return pill(pxf(code, v), rawPx(code, v)); };
   /* g : { kind : open | close | cut | add | flip | stop | hold, code, from, to (lots signés), sl (niveau du stop) } */
   function mt5Steps(g) {
-    var pc = dev === 'pc', c = '<b>' + g.code + '</b>', a = Math.abs(g.to), b = Math.abs(g.from), d = roundStep(Math.abs(a - b));
+    var c = '<b>' + g.code + '</b>', a = Math.abs(g.to), b = Math.abs(g.from), d = roundStep(Math.abs(a - b));
     var line = '<b class="ln">' + g.code + ' ' + ((g.from || g.to) > 0 ? 'buy' : 'sell') + '</b>', slp = g.sl ? slPill(g.code, g.sl) : '';
-    var trade = 'Onglet ' + ui('Trade') + (pc ? ' (Ctrl+T)' : '');
+    var hold = 'Onglet ' + ui('Trade') + ' : appui long sur ' + line;
     var order = function (vol, buy, label) {
-      return pc ? ['Touche <kbd>F9</kbd> ' + ui('Nouvel ordre', 'New Order') + ', symbole ' + c + '.', (label || 'Volume') + ' ' + lotPill(vol) + ' · Stop Loss ' + slp + '.', 'Bouton ' + (buy ? 'bleu ' + ui('Acheter', 'Buy') : 'rouge ' + ui('Vendre', 'Sell')) + '.']
-        : ['Onglet ' + ui('Cotations', 'Quotes') + ' : touche ' + c + ', puis ' + ui('Trader', 'Trade') + '.', (label || 'Volume') + ' ' + lotPill(vol) + ' · S/L ' + slp + '.', ui(buy ? 'Acheter' : 'Vendre', buy ? 'Buy by Market' : 'Sell by Market') + '.'];
+      return ['Onglet ' + ui('Cotations', 'Quotes') + ' : touche ' + c + ', puis ' + ui('Trader', 'Trade') + '.', (label || 'Volume') + ' ' + lotPill(vol) + ' · S/L ' + slp + '.', ui(buy ? 'Acheter' : 'Vendre', buy ? 'Buy by Market' : 'Sell by Market') + '.'];
     };
-    var modify = function (where) {
-      return pc ? (where || 'Clic droit sur la ligne ') + line + ' → ' + ui('Modifier', 'Modify') + ' : Stop Loss ' + slp + '.'
-        : (where || 'Appui long sur ') + line + ' → ' + ui('Modifier', 'Modify position') + ' : S/L ' + slp + '.';
-    };
-    var closeAll = pc ? trade + ' : croix <b>×</b> au bout de la ligne ' + line + '.' : trade + ' : appui long sur ' + line + ' → ' + ui('Clôturer', 'Close position') + ', puis le bouton jaune.';
+    var modify = function (where) { return (where || 'Appui long sur ') + line + ' → ' + ui('Modifier', 'Modify position') + ' : S/L ' + slp + '.'; };
+    var closeAll = hold + ' → ' + ui('Clôturer', 'Close position') + ', puis le bouton de clôture en bas.';
     var opp = g.from > 0 ? 'Vendre' : 'Acheter';
     if (g.kind === 'open') return { steps: order(a, g.to > 0) };
     if (g.kind === 'close') return { steps: [closeAll], tip: 'Plusieurs lignes ' + g.code + ' ? Ferme-les toutes.', warn: 'Ne passe pas d\'ordre ' + opp + ' pour fermer : sur FundedNext (compte en couverture), il ouvrirait une position inverse à côté.' };
     if (g.kind === 'cut') return {
-      steps: pc ? [trade + ' : double-clic sur la ligne ' + line + '.', 'Volume ' + lotPill(d) + ' : la part à fermer, pas celle qui reste (' + lotTxt(a) + ').', 'Bouton jaune ' + ui('Clôturer', 'Close by Market') + '.', modify('Puis clic droit sur la ligne ')]
-        : [trade + ' : appui long sur ' + line + ' → ' + ui('Clôturer', 'Close position') + '.', 'Volume ' + lotPill(d) + ' : la part à fermer (il reste ' + lotTxt(a) + '), puis le bouton jaune.', modify('Puis appui long sur ')],
+      steps: [hold + ' → ' + ui('Clôturer', 'Close position') + '.', 'Volume ' + lotPill(d) + ' : la part à fermer (il reste ' + lotTxt(a) + '), puis le bouton de clôture en bas.', modify('Puis appui long sur ')],
       warn: 'Ne passe pas d\'ordre ' + opp + ' : sur FundedNext (compte en couverture), il ouvrirait une position inverse à côté au lieu d\'alléger.' };
-    if (g.kind === 'add') return { steps: order(d, g.to > 0, 'Volume (le supplément)').concat([modify(pc ? 'Ancienne ligne : clic droit sur ' : 'Ancienne ligne : appui long sur ')]), tip: 'MT5 affiche deux lignes ' + g.code + ' : c\'est normal, elles gardent le même stop.' };
+    if (g.kind === 'add') return { steps: order(d, g.to > 0, 'Volume (le supplément)').concat([modify('Ancienne ligne : appui long sur ')]), tip: 'MT5 affiche deux lignes ' + g.code + ' : c\'est normal, elles gardent le même stop.' };
     if (g.kind === 'flip') return { steps: [closeAll].concat(order(a, g.to > 0)), warn: 'Ferme d\'abord l\'ancienne ligne : un ordre inverse seul la laisserait ouverte à côté.' };
-    if (g.kind === 'stop') return { steps: [pc ? trade + ' : clic droit sur la ligne ' + line + ' → ' + ui('Modifier', 'Modify') + '.' : trade + ' : appui long sur ' + line + ' → ' + ui('Modifier', 'Modify position') + '.', (pc ? 'Stop Loss ' : 'S/L ') + slp + ', puis ' + ui('Modifier', 'Modify') + '.'],
-      tip: 'Plusieurs lignes ' + g.code + ' ? Le même stop sur chacune.' + (pc ? ' Tu peux aussi faire glisser la ligne du stop sur le graphique.' : '') };
+    if (g.kind === 'stop') return { steps: [hold + ' → ' + ui('Modifier', 'Modify position') + '.', 'S/L ' + slp + ', puis ' + ui('Modifier', 'Modify') + '.'], tip: 'Plusieurs lignes ' + g.code + ' ? Le même stop sur chacune.' };
     return { lead: 'Position absente de ton MT5 (nouveau compte) ? Pour l\'ouvrir :', steps: order(a, g.to > 0) };
   }
   function mt5Guide(g, sum, key) {
     var s = mt5Steps(g);
-    return '<details class="mt5" data-k="' + esc(key) + '"><summary>' + ico('screen') + '<span class="t">Sur MT5</span><span class="s">' + sum + '</span>' + ico('chev', 'chev') + '</summary>' +
-      '<div class="mt5-b"><div class="seg dev" role="group" aria-label="Appareil"><button type="button" data-dev="pc" aria-pressed="' + (dev === 'pc') + '">' + ico('screen') + 'Ordinateur</button><button type="button" data-dev="tel" aria-pressed="' + (dev === 'tel') + '">' + ico('phone') + 'Téléphone</button></div>' +
-      (s.lead ? '<p class="lead5">' + s.lead + '</p>' : '') + '<ol class="st5">' + s.steps.map(function (x) { return '<li><span>' + x + '</span></li>'; }).join('') + '</ol>' +
+    return '<details class="mt5" data-k="' + esc(key) + '"><summary>' + ico('phone') + '<span class="t">Sur MT5</span><span class="s">' + sum + '</span>' + ico('chev', 'chev') + '</summary>' +
+      '<div class="mt5-b">' + (s.lead ? '<p class="lead5">' + s.lead + '</p>' : '') + '<ol class="st5">' + s.steps.map(function (x) { return '<li><span>' + x + '</span></li>'; }).join('') + '</ol>' +
       (s.warn ? '<p class="w5">' + ico('alert') + '<span>' + s.warn + '</span></p>' : '') + (s.tip ? '<p class="t5">' + s.tip + '</p>' : '') + '</div></details>';
   }
   /* barre des lots : avant → après */
@@ -371,13 +363,6 @@
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(v).then(ok, function () { toast(v); }); else toast(v);
       return;
     }
-    var d = e.target.closest('[data-dev]');
-    if (d) {
-      dev = d.dataset.dev; store.set('dev', dev);
-      var open = [].map.call(document.querySelectorAll('details.mt5[open]'), function (x) { return x.dataset.k; });
-      render();
-      open.forEach(function (k) { [].forEach.call(document.querySelectorAll('details.mt5'), function (x) { if (x.dataset.k === k) x.open = true; }); });
-    }
   });
 
   function orderCard(run, t, o, dkey) {
@@ -385,7 +370,7 @@
     var lots = function (v) { return lotTxt(v) + ' lot' + (v >= 2 ? 's' : ''); };
     var cls, icon, title, l2, sum;
     if (o.type === 'open') { cls = o.to > 0 ? 'buy' : 'sell'; icon = cls; title = (o.to > 0 ? 'Acheter ' : 'Vendre ') + lots(a); l2 = 'Nouvelle position ' + (o.to > 0 ? 'acheteuse' : 'vendeuse'); sum = 'nouvelle ligne de ' + lotTxt(a) + ' avec son stop'; }
-    else if (o.type === 'close') { cls = 'close'; icon = 'close'; title = 'Fermer la position'; l2 = (o.from > 0 ? 'Position acheteuse' : 'Position vendeuse') + ' de ' + lots(b); sum = 'la croix sur la ligne, rien d\'autre'; }
+    else if (o.type === 'close') { cls = 'close'; icon = 'close'; title = 'Fermer la position'; l2 = (o.from > 0 ? 'Position acheteuse' : 'Position vendeuse') + ' de ' + lots(b); sum = 'appui long sur la ligne, puis Clôturer'; }
     else if (o.type === 'flip') { cls = o.to > 0 ? 'buy' : 'sell'; icon = 'flip'; title = 'Retourner : ' + (o.to > 0 ? 'acheteur ' : 'vendeur ') + lots(a); l2 = 'Fermer les ' + lots(b) + ' ' + (o.from > 0 ? 'achetés' : 'vendus') + ', puis ' + (o.to > 0 ? 'acheter ' : 'vendre ') + lots(a); sum = 'fermer, puis ' + (o.to > 0 ? 'acheter ' : 'vendre ') + lotTxt(a); }
     else if (o.type === 'add') { cls = o.to > 0 ? 'buy' : 'sell'; icon = cls; title = (o.to > 0 ? 'Acheter ' : 'Vendre ') + lots(d) + ' de plus'; l2 = 'Position portée de ' + lots(b) + ' à ' + lots(a); sum = 'nouvelle ligne de ' + lotTxt(d) + ', même stop sur les deux'; }
     else if (o.type === 'cut') { cls = 'close'; icon = 'close'; title = 'Alléger de ' + lots(d); l2 = 'Position ramenée de ' + lots(b) + ' à ' + lots(a); sum = 'fermer ' + lotTxt(d) + ' sur la ligne existante'; }
@@ -1291,7 +1276,7 @@
   function renderReel() {
     var R = realData();
     $('r-import').innerHTML = '<div class="card-head"><h2>Importer mon relevé MT5</h2><span class="small">' + (R ? 'importé le ' + new Date(R.at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'aucun relevé') + '</span></div>' +
-      '<ol class="steps" style="margin-top:4px"><li>Sur le PC, dans MT5 : onglet <b>Historique</b>, clic droit, <b>Rapport</b>, puis <b>HTML</b>. Choisis toute la période du compte.</li><li>Envoie le fichier sur ton téléphone (mail, Drive, iCloud) et ouvre-le ici.</li></ol>' +
+      '<ol class="steps" style="margin-top:4px"><li>Sur un ordinateur (MT5 pour Mac ou Windows : l\'appli du téléphone n\'exporte pas le relevé) : onglet <b>Historique</b>, clic droit, <b>Rapport</b>, puis <b>HTML</b>. Choisis toute la période du compte.</li><li>Envoie le fichier sur ton téléphone (mail, Drive, iCloud) et ouvre-le ici.</li></ol>' +
       '<div class="rbtns"><label class="rfile">' + ico('sync') + '<span>Choisir le rapport MT5</span><input type="file" id="r-file" accept=".htm,.html,text/html"></label>' + (R ? '<button class="rclear" id="r-clear">Effacer</button>' : '') + '</div>' +
       '<p class="muted">Le fichier est lu sur ton téléphone et reste dedans : rien n\'est envoyé ailleurs.</p>';
     var ids = ['r-hero', 'r-rules', 'r-curve', 'r-open', 'r-trades', 'r-months'];
@@ -1484,7 +1469,7 @@
     cours: function (q) { S.qaQuotes = q || null; S.prov = null; return fetchQuotes().then(render); },
     etat: function () { var m = moment(), run = currentRun(m); return { phase: m.ph, pend: m.pend.map(ds), dernier: ds(m.L), soir: run ? ds(dayOf(run, run.T - 1)) : null, ordres: run ? ordersAt(run, run.T - 1).list.map(function (o) { return o.type + ' ' + o.code + ' ' + o.from + '>' + o.to; }) : null, risque: run ? riskAt(run, run.T - 1) : null }; },
     run: function () { return S.run; }, data: function () { return S.D; },
-    guide: function (g, d) { var keep = dev; if (d) dev = d; var r = mt5Steps(g); dev = keep; return r; },
+    guide: function (g) { return mt5Steps(g); },
     importFichier: function (blob) { return readReport(blob).then(function (R) { R.at = Date.now(); S.real = R; store.set('real', R); render(); return { operations: R.deals.length, fermees: R.closed.length, ouvertes: R.open.length, resume: R.summary, compte: R.meta }; }); }
   };
 })();

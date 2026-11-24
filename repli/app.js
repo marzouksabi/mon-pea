@@ -80,7 +80,7 @@
   var parisToday = function () { return dn(parisYMD.format(new Date(nowMs()))); };
 
   /* ---------- reglages et journal ---------- */
-  var VERSION = 'version du 13/11 12:11';
+  var VERSION = 'version du 24/11 23:25';
   var DEF = { size: 50000, lev: 0.5, dose: true, phase: 1, start: '', bal: '', ct: { spx: 10, ndx: 10 }, step: 0.01 };   // dose : taille dosee par la volatilite (base 0,75 x)   // FundedNext : 1 lot d'indice = 10 fois l'indice
   var cfg = Object.assign({}, DEF, store.get('cfg', {}));
   cfg.ct = Object.assign({}, DEF.ct, cfg.ct || {});
@@ -353,10 +353,10 @@
     var I = o.I;
     if (o.how === 'entry') {
       var lt = lotsFor(o.k, o.np ? o.np.p : o.a.X), stop = (o.np ? o.np.p : o.a.X) * (1 - stopFor(lt.lev));
-      return '<div class="how"><b>Pour entrer</b> (seulement si la condition est remplie vers ' + hm(closeUTC(session) - 600000) + ') : dans MT5, ordre au marché sur <b>' + I.sym + '</b> → volume <b>' + nf(lt.lots, 2) + ' lots</b> (≈ ' + usd(lt.notional) + ') → <b>Buy</b>.' +
-        (cfg.phase == 3 ? ' Puis ajoute un <b>stop à ' + px(stop) + '</b> (règle des 3 % de FundedNext).' : '') + '</div>';
+      return '<div class="how"><b>Pour entrer</b> (seulement si la condition est remplie vers ' + hm(closeUTC(session) - 600000) + ') : dans MT5, onglet Cotations, touche <b>' + I.sym + '</b> → Trader → volume <b>' + nf(lt.lots, 2) + ' lots</b> (≈ ' + usd(lt.notional) + ')' +
+        (cfg.phase == 3 ? ', S/L <b>' + px(stop) + '</b> (règle des 3 % de FundedNext)' : '') + ' → <b>Acheter</b> (Buy by Market).</div>';
     }
-    if (o.how === 'exit') return '<div class="how"><b>Pour sortir</b> : dans MT5, onglet « Trade », clique sur la <b>croix ×</b> au bout de la ligne <b>' + I.sym + '</b>. Ne clique pas sur « Sell » : ça ouvrirait un deuxième trade à l\'envers.</div>';
+    if (o.how === 'exit') return '<div class="how"><b>Pour sortir</b> : dans MT5, onglet « Trade », <b>appui long</b> sur la ligne <b>' + I.sym + '</b> → <b>Clôturer</b>, puis le bouton de clôture en bas. Ne passe pas d\'ordre « Vendre » : ça ouvrirait un deuxième trade à l\'envers.</div>';
     return '';
   }
   function inputHtml(o) {
@@ -605,7 +605,7 @@
   function orderLine(verb, k, p) {
     var sym = IDX[k] ? IDX[k].sym : '';
     if (verb === 'ENTRER') { var lt = lotsFor(k, p); return '<span class="side buy">BUY</span><span><b>' + nf(lt.lots, 2) + ' lots</b> · ' + sym + (cfg.phase == 3 ? ' · stop <b>' + px(p * (1 - stopFor(lt.lev))) + '</b>' : '') + '<small> · taille ' + levTxt(lt.lev) + '</small></span>'; }
-    if (verb === 'SORTIR') return '<span class="side out">' + ico('cross') + '</span><span>Croix <b>×</b> sur la ligne ' + sym + ' <small>(pas « Sell »)</small></span>';
+    if (verb === 'SORTIR') return '<span class="side out">' + ico('cross') + '</span><span>Appui long sur la ligne ' + sym + ' → <b>Clôturer</b> <small>(pas « Vendre »)</small></span>';
     if (verb === 'STOP') return '<span>MT5 a fermé le trade : note la sortie au journal</span>';
     if (verb === 'GARDER') return '<span>Ne touche à rien</span>';
     return '<span>Rien à faire</span>';
@@ -787,7 +787,7 @@
       if (ok) {
         html += '<div class="cond-head"><b>L\'ordre à passer si la condition est remplie</b></div><div class="tiles">' + tile('Lots à acheter', nf(lt.lots, 2)) + tile('Montant', usd(lt.notional)) + tile('Stop', cfg.phase == 3 ? px(stop) : 'aucun') +
           tile('Marge bloquée', margeTxt(lt.notional)) + tile('Levier max', '1:' + levMax()) + tile('Niveau d\'entrée', px(a.X)) + '</div>' + inputBox(o) +
-          '<div class="act-line">' + BUY + ' MT5 → <b>' + o.I.sym + '</b> → Ordre au marché → <b>' + nf(lt.lots, 2) + ' lots</b> → <b>Buy</b></div>';
+          '<div class="act-line">' + BUY + ' MT5 → Cotations → <b>' + o.I.sym + '</b> → Trader → <b>' + nf(lt.lots, 2) + ' lots</b> → <b>Acheter</b></div>';
       }
       k = o.k; chart = { k: k, from: IDX[k].c.length - 90, sma: true, refs: a.possible ? [{ v: a.X, label: 'entrée ' + px(a.X), cls: 'ref-buy', tail: true }] : [] };
     } else if (type === 'cours' && plan(parts[1]).trade && plan(parts[1]).trade.orphan) {
@@ -797,7 +797,7 @@
         '<div class="tiles">' + tile('Entrée', shortDay(to.d1) + ' · ' + px(to.p1)) + tile('Sortie de la règle', to.exitDay ? shortDay(to.exitDay) + ' · ' + px(to.cur) : '—') +
         tile('Variation de l\'indice', pct(to.r), to.r >= 0 ? 'pos' : 'neg') + '</div>' +
         '<button class="btn" data-closej="' + to.id + '">Noter la sortie dans le Journal</button>' +
-        '<div class="act-line" style="margin-top:10px"><span class="side out">SORTIR</span> MT5 → onglet Trade → <b>croix ×</b> sur ' + o.I.sym + ' (pas « Sell »)</div>';
+        '<div class="act-line" style="margin-top:10px"><span class="side out">SORTIR</span> MT5 → onglet Trade → <b>appui long</b> sur ' + o.I.sym + ' → <b>Clôturer</b> (pas « Vendre »)</div>';
       var ei2 = IDX[k].days.findIndex(function (dd) { return dd >= to.d1; });
       chart = { k: k, from: Math.max(0, ei2 - 5), refs: [{ v: to.p1, label: 'entrée ' + px(to.p1), cls: 'ref-buy' }].concat(to.exitDay ? [{ v: to.cur, label: 'sortie ' + px(to.cur), cls: 'ref-sell' }] : []) };
     } else if (type === 'cours') {
@@ -810,7 +810,7 @@
         '<div class="tiles">' + tile('Prix d\'entrée', px(tr.p1)) + tile('Prix actuel', px(tr.cur)) + tile('Niveau de sortie', px(a2.Y)) +
         tile('Variation de l\'indice', pct(tr.r), tr.r >= 0 ? 'pos' : 'neg') + tile('Hausse nécessaire pour sortir', a2.Y > tr.cur ? pct(a2.Y / tr.cur - 1) : 'atteinte', a2.Y > tr.cur ? '' : 'pos') + tile('Lots', nf(tr.lots, 2)) + tile('Stop', tr.stop ? px(tr.stop) : 'aucun') + tile('Valeur du trade', usd(tr.cur * tr.lots * (tr.ct || 10))) +
           tile('Marge bloquée', margeTxt(tr.cur * tr.lots * (tr.ct || 10))) + tile('Levier max', '1:' + levMax()) + '</div>' +
-        inputBox(o) + (exitNow ? '<div class="act-line"><span class="side out">SORTIR</span> MT5 → onglet Trade → <b>croix ×</b> sur ' + o.I.sym + ' (pas « Sell »)</div>' : '');
+        inputBox(o) + (exitNow ? '<div class="act-line"><span class="side out">SORTIR</span> MT5 → onglet Trade → <b>appui long</b> sur ' + o.I.sym + ' → <b>Clôturer</b> (pas « Vendre »)</div>' : '');
       k = o.k; var ei = IDX[k].days.findIndex(function (d) { return d >= tr.d1; });
       chart = { k: k, from: Math.max(0, ei - 5), entry: ei, exitLine: true, refs: [{ v: tr.p1, label: 'entrée ' + px(tr.p1), cls: 'ref-buy' }].concat(tr.stop ? [{ v: tr.stop, label: 'stop', cls: 'ref-stop', zone: 'below' }] : []), y: a2.Y };
     } else {

@@ -417,9 +417,6 @@ details.mt5 summary .chev{color:var(--ink-3);transition:transform .2s}
 details.mt5[open] summary .chev{transform:rotate(90deg)}
 details.mt5[open] summary{border-bottom:1px solid var(--line)}
 .mt5-b{padding:10px 12px 12px}
-.seg.dev{margin-bottom:10px}
-.seg.dev button{display:inline-flex;align-items:center;gap:6px}
-.seg.dev .ico{width:14px;height:14px}
 .lead5{margin:0 0 8px;font-size:12.5px;color:var(--ink-2)}
 .st5{list-style:none;margin:0;padding:0;counter-reset:st;display:flex;flex-direction:column;gap:8px}
 .st5 li{counter-increment:st;display:grid;grid-template-columns:22px 1fr;gap:9px;align-items:start;font-size:13px;line-height:1.5;color:var(--ink-2)}
